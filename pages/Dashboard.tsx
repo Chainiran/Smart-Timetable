@@ -28,23 +28,6 @@ const Dashboard: React.FC = () => {
                 <p className="text-lg text-gray-600 mt-2">ระบบจัดการตารางเรียน/ตารางสอนอัจฉริยะ</p>
             </header>
             
-            {activeAnnouncements.length > 0 && (
-                <div className="mb-8 space-y-6">
-                    {activeAnnouncements.map(announcement => (
-                        <div key={announcement.id} className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-3">{announcement.title}</h2>
-                            <div 
-                                className="prose max-w-none prose-lg text-gray-700" 
-                                dangerouslySetInnerHTML={{ __html: announcement.content }} 
-                            />
-                            <p className="text-right text-xs text-gray-400 mt-4">
-                               อัปเดตล่าสุด: {new Date(announcement.updatedAt).toLocaleString('th-TH')}
-                            </p>
-                        </div>
-                    ))}
-                </div>
-            )}
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                 <Link to="../view/class" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow transform hover:-translate-y-1">
                     <div className="flex items-center text-blue-500 mb-4">
@@ -80,6 +63,23 @@ const Dashboard: React.FC = () => {
                     </Link>
                 )}
             </div>
+
+            {activeAnnouncements.length > 0 && (
+                <div className="mt-8 space-y-6">
+                    {activeAnnouncements.map(announcement => (
+                        <div key={announcement.id} className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-3">{announcement.title}</h2>
+                            <div 
+                                className="prose max-w-none prose-lg text-gray-700" 
+                                dangerouslySetInnerHTML={{ __html: announcement.content }} 
+                            />
+                            <p className="text-right text-xs text-gray-400 mt-4">
+                               อัปเดตล่าสุด: {new Date(announcement.updatedAt).toLocaleString('th-TH')}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };
