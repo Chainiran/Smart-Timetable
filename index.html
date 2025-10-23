@@ -8,12 +8,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @media print {
+        /* Hide elements intended only for screen */
         .no-print {
           display: none !important;
         }
+        /* Show elements intended only for print */
         .print-only {
           display: block !important;
         }
+        
+        /* General print styles for the body */
         body {
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
@@ -21,10 +25,54 @@
           padding: 0;
           background-color: #fff;
         }
+        
         @page {
           size: A4;
           margin: 0.5in;
         }
+
+        /* --- Scenario 1: Printing the current view from the main #root --- */
+        /* By default, #print-root is hidden */
+        #print-root {
+          display: none;
+        }
+        
+        /* Override screen layout constraints to allow content to expand for printing */
+        #app-container, #app-content-wrapper {
+            height: auto !important;
+            overflow: visible !important;
+        }
+
+        /* Remove padding from the main content area and ensure it's not scrollable */
+        #main-content {
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow-y: visible !important;
+        }
+        
+        /* Ensure the table fits the page and doesn't overflow */
+        .print-container .overflow-x-auto {
+          overflow-x: visible;
+        }
+        .print-container table {
+          width: 100%;
+          table-layout: fixed; /* Force columns to fit page width */
+          font-size: 8pt;     /* Reduce font size to fit more content */
+        }
+        .print-container th, .print-container td {
+          word-wrap: break-word; /* Wrap long text */
+        }
+
+        /* --- Scenario 2: Generating a PDF from the dedicated #print-root --- */
+        /* When the 'printing-pdf' class is active, hide the main app and show the print content */
+        body.printing-pdf #root {
+          display: none;
+        }
+        body.printing-pdf #print-root {
+          display: block;
+        }
+        
+        /* Styles for the multi-table PDF layout */
         .print-page {
           page-break-after: always;
           width: 100%;
@@ -36,19 +84,21 @@
           page-break-after: avoid;
         }
         
+        .grid-1-per-page {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr;
+        }
         .grid-2-per-page {
           grid-template-columns: 1fr;
           grid-template-rows: repeat(2, 1fr);
         }
-        .grid-4-per-page {
+        .grid-6-per-page {
           grid-template-columns: 1fr 1fr;
-          grid-template-rows: repeat(2, 1fr);
-        }
-        .grid-8-per-page {
-          grid-template-columns: 1fr 1fr;
-          grid-template-rows: repeat(4, 1fr);
+          grid-template-rows: repeat(3, 1fr);
         }
       }
+
+      /* By default, elements meant only for printing are hidden from the screen */
       .print-only {
         display: none;
       }
@@ -60,7 +110,11 @@
     "react": "https://aistudiocdn.com/react@^19.1.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.542.0",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.8.2"
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.8.2",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "chart.js": "https://aistudiocdn.com/chart.js@^4.4.3",
+    "react-chartjs-2": "https://aistudiocdn.com/react-chartjs-2@^5.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@latest"
   }
 }
 </script>

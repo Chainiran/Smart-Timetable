@@ -1,16 +1,47 @@
-import { Teacher, ClassGroup, Subject, Location, TimeSlot, ScheduleEntry, SchoolInfo } from './types';
+
+
 
 export const DAYS_OF_WEEK = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
 
-export const SUBJECT_COLORS = [
-    'bg-red-200', 'bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-purple-200',
-    'bg-pink-200', 'bg-indigo-200', 'bg-teal-200', 'bg-orange-200', 'bg-lime-200'
+// Base HSL colors for dynamic generation. Hue (0-360), Saturation (%), Lightness (%)
+// Using HSL allows for easy programmatic adjustments to lightness for shading.
+export const SUBJECT_GROUP_COLORS: { [key: string]: { h: number, s: number } } = {
+    'ภาษาไทย': { h: 25, s: 80 }, // Orange-ish
+    'คณิตศาสตร์': { h: 220, s: 70 }, // Blue
+    'วิทยาศาสตร์และเทคโนโลยี': { h: 140, s: 60 }, // Green
+    'สังคมศึกษา ศาสนาและวัฒนธรรม': { h: 50, s: 75 }, // Yellow
+    'สุขศึกษาและพลศึกษา': { h: 300, s: 70 }, // Magenta
+    'ศิลปะ': { h: 270, s: 70 }, // Purple
+    'การงานอาชีพ': { h: 190, s: 65 }, // Teal
+    'ภาษาต่างประเทศ': { h: 0, s: 70 }, // Red
+    'การศึกษาค้นคว้าด้วยตนเอง': { h: 30, s: 40 }, // Brownish
+    'กิจกรรม': { h: 200, s: 30 }, // Gray-blue
+    'กิจกรรมนอกหลักหลักสูตร': { h: 0, s: 0 }, // Gray
+    'default': { h: 0, s: 0 } // Default color
+};
+
+// A versatile palette for dynamically assigning colors to numerous items like teachers or class groups.
+export const DYNAMIC_COLOR_PALETTE: { h: number, s: number }[] = [
+    { h: 15, s: 85 },   // Orange
+    { h: 35, s: 85 },   // Yellow-Orange
+    { h: 55, s: 75 },   // Yellow
+    { h: 80, s: 60 },   // Lime Green
+    { h: 130, s: 60 },  // Green
+    { h: 170, s: 70 },  // Teal
+    { h: 195, s: 80 },  // Cyan
+    { h: 220, s: 75 },  // Blue
+    { h: 250, s: 70 },  // Indigo
+    { h: 280, s: 70 },  // Violet
+    { h: 310, s: 70 },  // Magenta
+    { h: 340, s: 85 },  // Red-Pink
 ];
+
 
 export const SUBJECT_GROUP_OPTIONS = [
     'ภาษาไทย', 'คณิตศาสตร์', 'วิทยาศาสตร์และเทคโนโลยี', 'สังคมศึกษา ศาสนาและวัฒนธรรม', 
-    'สุขศึกษาและพลศึกษา', 'ศิลปะ', 'การงานอาชีพและเทคโนโลยี', 'ภาษาต่างประเทศ', 
-    'กิจกรรม', 'กิจกรรมนอกหลักสูตร'
+    'สุขศึกษาและพลศึกษา', 'ศิลปะ', 'การงานอาชีพ', 'ภาษาต่างประเทศ', 
+    'การศึกษาค้นคว้าด้วยตนเอง',
+    'กิจกรรม', 'กิจกรรมนอกหลักหลักสูตร'
 ];
 
 export const SEMESTER_OPTIONS = [
@@ -20,63 +51,6 @@ export const SEMESTER_OPTIONS = [
     { value: 3, label: 'ภาคฤดูร้อน' },
 ];
 
-export const INITIAL_SCHOOL_INFO: SchoolInfo = {
-  name: 'โรงเรียนอัจฉริยะ',
-  address: '123 ถนนวิทยพัฒนา แขวงปัญญา เขตความรู้ กรุงเทพฯ 10900',
-  phone: '02-123-4567',
-  logoUrl: '',
-  academicYear: '2567',
-  currentSemester: 1,
-};
-
-
-export const INITIAL_TEACHERS: Teacher[] = [
-    { id: 'T001', prefix: 'อ.', name: 'สมชาย เก่งมาก', subjectGroup: 'วิทยาศาสตร์และเทคโนโลยี', isAdmin: true },
-    { id: 'T002', prefix: 'อ.', name: 'สมหญิง จริงใจ', subjectGroup: 'คณิตศาสตร์', isAdmin: false },
-    { id: 'T003', prefix: 'ครู', name: 'มานี มีดี', subjectGroup: 'ภาษาไทย', isAdmin: false },
-    { id: 'T004', prefix: 'ครู', name: 'เจษฎาพร พรประเสริฐ', subjectGroup: 'ภาษาต่างประเทศ', isAdmin: false },
-];
-
-export const INITIAL_CLASS_GROUPS: ClassGroup[] = [
-    { id: 'C001', name: 'ม.1/1', gradeLevel: 'ม.1' },
-    { id: 'C002', name: 'ม.1/2', gradeLevel: 'ม.1' },
-    { id: 'C003', name: 'ม.4/1', gradeLevel: 'ม.4' },
-    { id: 'C004', name: 'ม.1/1ก', gradeLevel: 'ม.1', parentId: 'C001' },
-    { id: 'C005', name: 'ม.1/1ข', gradeLevel: 'ม.1', parentId: 'C001' },
-];
-
-export const INITIAL_SUBJECTS: Subject[] = [
-    { code: 'ว21101', name: 'วิทยาศาสตร์พื้นฐาน', subjectGroup: 'วิทยาศาสตร์และเทคโนโลยี', color: SUBJECT_COLORS[0], semester: 1, gradeLevel: 'ม.1', credits: 1.5, periodsPerWeek: 3 },
-    { code: 'ค21101', name: 'คณิตศาสตร์พื้นฐาน', subjectGroup: 'คณิตศาสตร์', color: SUBJECT_COLORS[1], semester: 1, gradeLevel: 'ม.1', credits: 1.5, periodsPerWeek: 3 },
-    { code: 'ท21101', name: 'ภาษาไทย', subjectGroup: 'ภาษาไทย', color: SUBJECT_COLORS[2], semester: 0, gradeLevel: 'ม.ต้น(ม.1-3)', credits: 1.0, periodsPerWeek: 2 },
-    { code: 'อ21101', name: 'ภาษาอังกฤษ', subjectGroup: 'ภาษาต่างประเทศ', color: SUBJECT_COLORS[3], semester: 1, gradeLevel: 'ม.1', credits: 1.0, periodsPerWeek: 2 },
-];
-
-export const INITIAL_LOCATIONS: Location[] = [
-    { id: 'L001', name: 'ห้อง 421', responsibleTeacherId: 'T001' },
-    { id: 'L002', name: 'ห้องปฏิบัติการคอมพิวเตอร์ 1' },
-    { id: 'L003', name: 'สนามฟุตบอล' },
-    { id: 'L004', name: 'ห้องสมุด', responsibleTeacherId: 'T003' },
-];
-
-export const INITIAL_TIME_SLOTS: TimeSlot[] = [
-    { id: 'TS01', period: 1, startTime: '08:30', endTime: '09:20' },
-    { id: 'TS02', period: 2, startTime: '09:20', endTime: '10:10' },
-    { id: 'TS03', period: 3, startTime: '10:20', endTime: '11:10' },
-    { id: 'TS04', period: 4, startTime: '11:10', endTime: '12:00' },
-    { id: 'TS05', period: 5, startTime: '13:00', endTime: '13:50' },
-    { id: 'TS06', period: 6, startTime: '13:50', endTime: '14:40' },
-];
-
-export const INITIAL_SCHEDULE: ScheduleEntry[] = [
-    { id: 'SE001', classGroupId: 'C001', day: 'จันทร์', timeSlotId: 'TS01', subjectCode: 'ว21101', teacherIds: ['T001'], locationId: 'L001' },
-    { id: 'SE002', classGroupId: 'C001', day: 'จันทร์', timeSlotId: 'TS02', subjectCode: 'ค21101', teacherIds: ['T002'], locationId: 'L001' },
-    { id: 'SE003', classGroupId: 'C001', day: 'อังคาร', timeSlotId: 'TS03', subjectCode: 'ท21101', teacherIds: ['T003'], locationId: 'L004' },
-    { id: 'SE004', classGroupId: 'C002', day: 'จันทร์', timeSlotId: 'TS01', subjectCode: 'ค21101', teacherIds: ['T002'], locationId: 'L002' },
-    { id: 'SE005', classGroupId: 'C004', day: 'พุธ', timeSlotId: 'TS01', subjectCode: 'อ21101', teacherIds: ['T004'], locationId: 'L002' },
-    { id: 'SE006', classGroupId: 'C003', day: 'ศุกร์', timeSlotId: 'TS06', customActivity: 'กิจกรรมชมรม', teacherIds: ['T001'], locationId: 'L003' },
-    { id: 'SE007', classGroupId: 'C002', day: 'อังคาร', timeSlotId: 'TS01', subjectCode: undefined, teacherIds: [], locationId: undefined },
-];
 
 export const DATA_CONFIG: any = {
     teachers: {
@@ -85,9 +59,8 @@ export const DATA_CONFIG: any = {
             { name: 'prefix', label: 'คำนำหน้า', type: 'text', required: true },
             { name: 'name', label: 'ชื่อ-สกุล', type: 'text', required: true },
             { name: 'subjectGroup', label: 'กลุ่มสาระฯ', type: 'select', options: SUBJECT_GROUP_OPTIONS, required: true },
-            { name: 'isAdmin', label: 'Admin', type: 'checkbox', required: false },
         ],
-        csvHeaders: ['prefix', 'name', 'subjectGroup', 'isAdmin'],
+        csvHeaders: ['prefix', 'name', 'subjectGroup'],
     },
     subjects: {
         title: 'จัดการข้อมูลรายวิชา',
@@ -96,7 +69,7 @@ export const DATA_CONFIG: any = {
             { name: 'name', label: 'ชื่อวิชา', type: 'text', required: true },
             { name: 'subjectGroup', label: 'กลุ่มสาระฯ', type: 'select', options: SUBJECT_GROUP_OPTIONS, required: true },
             { name: 'semester', label: 'ภาคเรียน', type: 'select', options: SEMESTER_OPTIONS.map(o => o.value), displayOptions: SEMESTER_OPTIONS, required: true },
-            { name: 'gradeLevel', label: 'ระดับชั้น', type: 'select', options: ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6', 'ม.ต้น(ม.1-3)', 'ม.ปลาย(ม.4-6)'], required: true },
+            { name: 'gradeLevel', label: 'ระดับชั้น', type: 'select', options: ['อ.1', 'อ.2', 'อ.3', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6', 'ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6', 'อนุบาล(อ.1-3)', 'ประถม(ป.1-6)', 'ม.ต้น(ม.1-3)', 'ม.ปลาย(ม.4-6)'], required: true },
             { name: 'credits', label: 'หน่วยกิต', type: 'number', required: true },
             { name: 'periodsPerWeek', label: 'คาบ/สัปดาห์', type: 'number', required: true },
         ],
@@ -106,7 +79,7 @@ export const DATA_CONFIG: any = {
         title: 'จัดการข้อมูลกลุ่มเรียน',
         fields: [
             { name: 'name', label: 'ชื่อกลุ่มเรียน', type: 'text', required: true },
-            { name: 'gradeLevel', label: 'ระดับชั้น', type: 'select', options: ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'], required: true },
+            { name: 'gradeLevel', label: 'ระดับชั้น', type: 'select', options: ['อ.1', 'อ.2', 'อ.3', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6', 'ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'], required: true },
             { name: 'parentId', label: 'กลุ่มเรียนหลัก (สำหรับกลุ่มย่อย)', type: 'select_classGroup', required: false },
         ],
         csvHeaders: ['name', 'gradeLevel', 'parentName'],
@@ -128,4 +101,37 @@ export const DATA_CONFIG: any = {
             { name: 'endTime', label: 'เวลาสิ้นสุด', type: 'time', required: true },
         ],
     },
+    users: {
+        title: 'จัดการผู้ใช้',
+        fields: [
+            { name: 'username', label: 'ชื่อผู้ใช้', type: 'text', required: true },
+            { name: 'password', label: 'รหัสผ่าน', type: 'password', required: false, placeholder: 'ปล่อยว่างไว้หากไม่ต้องการเปลี่ยน' },
+            { name: 'role', label: 'สิทธิ์', type: 'select', options: ['admin', 'super'], required: true },
+        ],
+    },
+};
+
+export const TEMPLATE_EXAMPLES: { [key: string]: string[][] } = {
+    teachers: [
+        ['นาย', 'สมชาย ใจดี', 'คณิตศาสตร์'],
+        ['นางสาว', 'สมหญิง เก่งมาก', 'ภาษาไทย'],
+        ['นาง', 'จิตรา สอนดี', 'วิทยาศาสตร์และเทคโนโลยี'],
+    ],
+    subjects: [
+        ['ท21101', 'ภาษาไทยพื้นฐาน 1', 'ภาษาไทย', '1', 'ม.1', '1.5', '3'],
+        ['ค21101', 'คณิตศาสตร์พื้นฐาน 1', 'คณิตศาสตร์', '1', 'ม.1', '1.5', '3'],
+        ['อ30201', 'ภาษาอังกฤษอ่าน-เขียน', 'ภาษาต่างประเทศ', '1', 'ม.ปลาย(ม.4-6)', '1.0', '2'],
+        ['พ20105', 'สุขศึกษา', 'สุขศึกษาและพลศึกษา', '0', 'ม.1', '0.5', '1'],
+    ],
+    classGroups: [
+        ['ม.1/1', 'ม.1', ''],
+        ['ม.4/1', 'ม.4', ''],
+        ['ห้องเรียนพิเศษวิทย์-คณิต ม.ต้น', 'ม.1', ''],
+    ],
+    locations: [
+        ['ห้อง 111', 'สมชาย ใจดี'],
+        ['ห้องสมุด', 'สมหญิง เก่งมาก'],
+        ['ห้องคอมพิวเตอร์ 1', ''],
+        ['สนามฟุตบอล', ''],
+    ],
 };

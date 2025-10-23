@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, ChevronDown, Search } from 'lucide-react';
-import { Teacher } from '../types';
+import { Teacher, ClassGroup } from '../types';
 import { SUBJECT_GROUP_OPTIONS } from '../constants';
 
 interface Option {
@@ -49,22 +49,74 @@ const SearchableMultiSelect: React.FC<SearchableMultiSelectProps> = ({
   }, []);
 
   const handleToggleOption = (optionId: string) => {
-    const newSelectedIds = selectedIds.includes(optionId)
-      ? selectedIds.filter(id => id !== optionId)
-      : [...selectedIds, optionId];
-    onChange(newSelectedIds);
-    setSelectedGroup(''); // Reset group selection if individual selection changes
+    // Retain original behavior if not in 'class' view
+    if (viewType !== 'class') {
+        const newSelectedIds = selectedIds.includes(optionId)
+            ? selectedIds.filter(id => id !== optionId)
+            : [...selectedIds, optionId];
+        onChange(newSelectedIds);
+        setSelectedGroup('');
+        return;
+    }
+
+    // Enhanced logic for class groups with parent-child relationships
+    const allClassGroups = options as ClassGroup[];
+    const toggledGroup = allClassGroups.find(g => g.id === optionId);
+    if (!toggledGroup) return;
+
+    const selectionSet = new Set(selectedIds);
+    const isCurrentlySelected = selectionSet.has(optionId);
+
+    if (isCurrentlySelected) {
+        // --- DESELECTING ---
+        selectionSet.delete(optionId);
+
+        // If it's a parent, deselect all its children.
+        const children = allClassGroups.filter(g => g.parentId === optionId);
+        children.forEach(child => selectionSet.delete(child.id));
+
+        // If it was a child, check if its parent should be deselected.
+        if (toggledGroup.parentId) {
+            const siblingsAndSelf = allClassGroups.filter(g => g.parentId === toggledGroup.parentId);
+            // Check if any other child of the same parent is STILL selected.
+            const anyOtherChildSelected = siblingsAndSelf.some(s => selectionSet.has(s.id));
+            if (!anyOtherChildSelected) {
+                selectionSet.delete(toggledGroup.parentId);
+            }
+        }
+    } else {
+        // --- SELECTING ---
+        selectionSet.add(optionId);
+
+        // If it's a parent, select all its children.
+        const children = allClassGroups.filter(g => g.parentId === optionId);
+        children.forEach(child => selectionSet.add(child.id));
+
+        // If it's a child, ensure its parent is also selected.
+        if (toggledGroup.parentId) {
+            selectionSet.add(toggledGroup.parentId);
+        }
+    }
+    
+    onChange(Array.from(selectionSet));
+    setSelectedGroup(''); // Reset teacher group selection
   };
+
 
   const handleSelectByGroup = (group: string) => {
     setSelectedGroup(group);
-    if (group && allTeachers) {
+    if (!allTeachers) return;
+
+    if (group === 'all') {
+        const allTeacherIds = allTeachers.map(t => t.id);
+        onChange(allTeacherIds);
+    } else if (group) { // A specific group is selected
         const teacherIdsInGroup = allTeachers
             .filter(t => t.subjectGroup === group)
             .map(t => t.id);
         onChange(teacherIdsInGroup);
-    } else {
-        onChange([]); // Clear selection if no group is selected
+    } else { // group is "" (empty string)
+        onChange([]); // Clear selection
     }
   };
 
@@ -98,7 +150,7 @@ const SearchableMultiSelect: React.FC<SearchableMultiSelectProps> = ({
         </div>
       </div>
       {isOpen && (
-        <div className="absolute z-20 w-full mt-1 bg-white border rounded shadow-lg">
+        <div className="absolute z-40 w-full mt-1 bg-white border rounded shadow-lg">
           {viewType === 'teacher' && allTeachers && (
             <div className="p-2 border-b">
                 <label htmlFor="group-select" className="text-sm text-gray-600 block mb-1">เลือกครูทั้งกลุ่มสาระฯ:</label>
@@ -110,6 +162,7 @@ const SearchableMultiSelect: React.FC<SearchableMultiSelectProps> = ({
                     onClick={(e) => e.stopPropagation()} // Prevent closing the main dropdown when clicking the select
                 >
                     <option value="">-- ไม่เลือกกลุ่ม --</option>
+                    <option value="all">ทั้งหมด</option>
                     {SUBJECT_GROUP_OPTIONS.map(group => (
                         <option key={group} value={group}>{group}</option>
                     ))}

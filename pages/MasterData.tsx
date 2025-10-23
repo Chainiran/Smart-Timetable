@@ -1,15 +1,15 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useTimetable } from '../context/TimetableContext';
 import Modal from '../components/Modal';
-import { DATA_CONFIG, SEMESTER_OPTIONS } from '../constants';
-import { PlusCircle, Edit, Trash2, Save, Trash, Plus, Upload, Download } from 'lucide-react';
-import { SchoolInfo } from '../types';
+import { DATA_CONFIG, SEMESTER_OPTIONS, TEMPLATE_EXAMPLES, SUBJECT_GROUP_OPTIONS } from '../constants';
+import { PlusCircle, Edit, Trash2, Save, Trash, Plus, Upload, Download, Archive, ArchiveRestore, Search, ArrowUp, ArrowDown, XCircle } from 'lucide-react';
+import { SchoolInfo, MasterDataType } from '../types';
 
 const GeneralSettingsPanel: React.FC = () => {
-    const { schoolInfo, updateSchoolInfo } = useTimetable();
+    const { schoolInfo, updateSchoolInfo, fetchPublishingStatus } = useTimetable();
     const [localInfo, setLocalInfo] = useState<SchoolInfo | null>(schoolInfo);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     useEffect(() => {
         if (schoolInfo) {
@@ -22,10 +22,16 @@ const GeneralSettingsPanel: React.FC = () => {
         setLocalInfo(prev => prev ? ({ ...prev, [name]: name === 'currentSemester' ? Number(value) : value }) : null);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (localInfo) {
-            updateSchoolInfo(localInfo);
-            alert('บันทึกการตั้งค่าทั่วไปสำเร็จ');
+            const result = await updateSchoolInfo(localInfo);
+            if (result.success) {
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 3000); // Hide after 3 seconds
+                await fetchPublishingStatus(); // Refetch to get the potentially new status
+            } else {
+                alert(`เกิดข้อผิดพลาด: ${result.message}`);
+            }
         }
     };
     
@@ -34,7 +40,12 @@ const GeneralSettingsPanel: React.FC = () => {
     }
 
     return (
-        <div className="p-6 bg-white rounded-lg shadow">
+        <div className="p-6 bg-white rounded-lg shadow relative">
+             {showSuccess && (
+                <div className="fixed top-5 right-5 z-50 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-bounce">
+                    บันทึกข้อมูลสำเร็จ!
+                </div>
+            )}
             <h1 className="text-3xl font-bold text-gray-800 mb-6">ตั้งค่าทั่วไป</h1>
             <div className="space-y-4">
                  <div>
@@ -127,38 +138,211 @@ const CSVImportModal: React.FC<{
     )
 }
 
-const MasterData: React.FC = () => {
-    const { dataType = 'general' } = useParams<{ dataType: string }>();
-    const location = useLocation();
-    const isGeneralSettings = location.pathname === '/settings/general' || dataType === 'general';
-    const timetable = useTimetable();
-
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isEditMode, setIsEditMode] = useState(false);
-    const [bulkData, setBulkData] = useState<any[]>([{}]);
-    const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-    const [csvData, setCsvData] = useState<any[]>([]);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    
-    const config = dataType ? DATA_CONFIG[dataType] : null;
-    const data = dataType ? (timetable as any)[dataType] : [];
-
-    if (isGeneralSettings) {
-        return <GeneralSettingsPanel />;
-    }
-    
-    if (!dataType || !config) {
+const CsvInstructions: React.FC<{ dataType: string }> = ({ dataType }) => {
+    const config = DATA_CONFIG[dataType];
+    if (!config || !config.csvHeaders) {
         return null;
     }
 
+    let instructions: React.ReactNode = null;
+
+    switch (dataType) {
+        case 'teachers':
+            instructions = (
+                <ul className="list-disc list-inside space-y-1">
+                    <li><b>prefix:</b> คำนำหน้าชื่อ (เช่น นาย, นาง, นางสาว)</li>
+                    <li><b>name:</b> ชื่อ-สกุลเต็ม</li>
+                    <li><b>subjectGroup:</b> กลุ่มสาระการเรียนรู้ (ต้องเป็นค่าใดค่าหนึ่งต่อไปนี้): <code>{SUBJECT_GROUP_OPTIONS.join(', ')}</code></li>
+                </ul>
+            );
+            break;
+        case 'subjects':
+            instructions = (
+                 <ul className="list-disc list-inside space-y-1">
+                    <li><b>code:</b> รหัสวิชา (ต้องไม่ซ้ำกันในโรงเรียน)</li>
+                    <li><b>name:</b> ชื่อวิชา</li>
+                    <li><b>subjectGroup:</b> กลุ่มสาระฯ (ต้องเป็นค่าใดค่าหนึ่งต่อไปนี้): <code>{SUBJECT_GROUP_OPTIONS.join(', ')}</code></li>
+                    <li><b>semester:</b> ภาคเรียน ระบุเป็นตัวเลข: <code>0</code>=ทุกภาคเรียน, <code>1</code>=ภาคเรียนที่ 1, <code>2</code>=ภาคเรียนที่ 2, <code>3</code>=ภาคฤดูร้อน</li>
+                    <li><b>gradeLevel:</b> ระดับชั้น สามารถระบุได้หลายรูปแบบ:
+                        <ul className="list-['-_'] list-inside ml-6 mt-1">
+                            <li>ระดับชั้นเดียว: <code>อ.1</code>, <code>อ.2</code>, <code>อ.3</code>, <code>ป.1</code> - <code>ป.6</code>, <code>ม.1</code> - <code>ม.6</code></li>
+                            <li>ช่วงชั้น: <code>อนุบาล(อ.1-3)</code>, <code>ประถม(ป.1-6)</code>, <code>ม.ต้น(ม.1-3)</code>, <code>ม.ปลาย(ม.4-6)</code></li>
+                        </ul>
+                    </li>
+                    <li><b>credits:</b> จำนวนหน่วยกิต (ตัวเลขทศนิยมได้ เช่น 1.5)</li>
+                    <li><b>periodsPerWeek:</b> จำนวนคาบที่ต้องเรียนต่อสัปดาห์ (ตัวเลข)</li>
+                </ul>
+            );
+            break;
+        case 'classGroups':
+             instructions = (
+                <ul className="list-disc list-inside space-y-1">
+                    <li><b>name:</b> ชื่อกลุ่มเรียน (เช่น 'ม.1/1', 'ห้องเรียนพิเศษวิทย์-คณิต ม.1')</li>
+                    <li><b>gradeLevel:</b> ระดับชั้นของกลุ่มเรียน (เช่น <code>ป.1</code>, <code>ม.4</code>)</li>
+                    <li><b>parentName:</b> ชื่อของกลุ่มเรียนหลัก (สำหรับกลุ่มย่อย) หากเป็นกลุ่มเรียนหลักให้ปล่อยว่างไว้</li>
+                </ul>
+            );
+            break;
+        case 'locations':
+            instructions = (
+                <ul className="list-disc list-inside space-y-1">
+                    <li><b>name:</b> ชื่อสถานที่ (เช่น 'ห้อง 111', 'ห้องสมุด', 'สนามฟุตบอล')</li>
+                    <li><b>responsibleTeacherName:</b> ชื่อ-สกุลเต็มของครูผู้รับผิดชอบ (ต้องตรงกับชื่อครูที่มีในระบบ) หากไม่มีให้ปล่อยว่างไว้</li>
+                </ul>
+            );
+            break;
+    }
+
+    if (!instructions) return null;
+
+    return (
+        <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 text-blue-800 rounded-r-lg">
+            <h3 className="font-bold mb-2">คำแนะนำการใช้เทมเพลต CSV สำหรับ "{config.title.replace('จัดการข้อมูล', '').trim()}"</h3>
+            <p className="mb-2">ไฟล์ CSV ต้องมีหัวคอลัมน์ต่อไปนี้ตามลำดับ: <code>{config.csvHeaders.join(', ')}</code></p>
+            {instructions}
+        </div>
+    );
+};
+
+const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ dataType }) => {
+    const { fetchUsers, fetchArchivedData, updateItemStatus, ...timetable } = useTimetable();
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [currentItem, setCurrentItem] = useState<any | null>(null);
+    const [bulkData, setBulkData] = useState<any[]>([{}]);
+    const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+    const [csvData, setCsvData] = useState<any[]>([]);
+    const [view, setView] = useState<'active' | 'archived'>('active');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
+    
+    // New states for mass edit mode (locations only)
+    const [isMassEditMode, setIsMassEditMode] = useState(false);
+    const [editedData, setEditedData] = useState<any[]>([]);
+    const [massEditLoading, setMassEditLoading] = useState(false);
+
+    const memoizedFetchUsers = useCallback(fetchUsers, []);
+    const memoizedFetchArchivedData = useCallback(fetchArchivedData, []);
+
+
+    useEffect(() => {
+        if (dataType === 'users') {
+            memoizedFetchUsers();
+        } else {
+            memoizedFetchArchivedData(dataType);
+        }
+        setSearchTerm('');
+        setCurrentPage(1);
+        setItemsPerPage(10);
+        setView('active');
+        setIsMassEditMode(false); // Reset mass edit mode when switching data types
+        // Set default sort config
+        const defaultConfig = DATA_CONFIG[dataType];
+        if (defaultConfig && defaultConfig.fields.length > 0) {
+            setSortConfig({ key: defaultConfig.fields[0].name, direction: 'ascending' });
+        } else {
+            setSortConfig({ key: null, direction: 'ascending' });
+        }
+    }, [dataType, memoizedFetchUsers, memoizedFetchArchivedData]);
+    
+    const config = DATA_CONFIG[dataType];
+    const isSoftDeletable = ['teachers', 'subjects', 'classGroups', 'locations', 'timeSlots'].includes(dataType);
+    const isToggleable = ['teachers', 'subjects', 'classGroups', 'locations'].includes(dataType);
+    const isPaginatedView = isSoftDeletable;
+    const archivedDataType = isSoftDeletable ? `archived${dataType.charAt(0).toUpperCase() + dataType.slice(1)}` : '';
+    
+    const data = view === 'active' 
+        ? (timetable as any)[dataType] || []
+        : (timetable as any)[archivedDataType] || [];
+        
     const { title, fields } = config;
+
+    const requestSort = (key: string) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+        setCurrentPage(1);
+    };
+
+    const processedData = useMemo(() => {
+        if (!isPaginatedView) return data;
+
+        let items = [...data];
+
+        // 1. Sorting
+        if (sortConfig.key) {
+            const getSortableValue = (item: any, key: string) => {
+                const field = fields.find((f: any) => f.name === key);
+                if (!field) return item[key];
+    
+                const value = item[key];
+                if (field.name === 'responsibleTeacherId' && value) return timetable.teachers.find(t => t.id === value)?.name || '';
+                if (field.name === 'parentId' && value) return timetable.classGroups.find(cg => cg.id === value)?.name || '';
+                if (field.name === 'semester' && field.displayOptions) return field.displayOptions.find((d: any) => d.value === value)?.label || value;
+                return value;
+            };
+
+            items.sort((a, b) => {
+                const valA = getSortableValue(a, sortConfig.key!);
+                const valB = getSortableValue(b, sortConfig.key!);
+    
+                if (valA === null || valA === undefined) return 1;
+                if (valB === null || valB === undefined) return -1;
+                
+                let comparison = 0;
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    comparison = valA - valB;
+                } else {
+                    comparison = String(valA).localeCompare(String(valB), 'th-TH');
+                }
+                
+                return sortConfig.direction === 'ascending' ? comparison : -comparison;
+            });
+        }
+        
+        // 2. Filtering
+        if (searchTerm) {
+            const lowercasedFilter = searchTerm.toLowerCase();
+            items = items.filter(item => {
+                const searchableString = fields.map((field: any) => {
+                    const value = item[field.name];
+                    if (field.type === 'password') return '';
+                    if (field.name === 'responsibleTeacherId' && value) return timetable.teachers.find(t => t.id === value)?.name || '';
+                    if (field.name === 'parentId' && value) return timetable.classGroups.find(cg => cg.id === value)?.name || '';
+                    if (field.name === 'semester' && field.displayOptions) return field.displayOptions.find((d: any) => d.value === value)?.label || value;
+                    return String(value ?? '');
+                }).join(' ').toLowerCase();
+
+                return searchableString.includes(lowercasedFilter);
+            });
+        }
+
+        return items;
+    }, [data, sortConfig, searchTerm, fields, isPaginatedView, timetable.teachers, timetable.classGroups]);
+
+    const totalPages = Math.ceil((isMassEditMode ? editedData.length : processedData.length) / itemsPerPage);
+    const paginatedData = useMemo(() => 
+        (isMassEditMode ? editedData : processedData).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    [processedData, currentPage, itemsPerPage, isMassEditMode, editedData]);
+
+    const dataToRender = isPaginatedView ? paginatedData : data;
     
     const handleOpenModal = (item: any | null = null) => {
         if (item) {
             setIsEditMode(true);
-            setBulkData([item]);
+            setCurrentItem(item);
+            const { password, ...rest } = item;
+            setBulkData([rest]);
         } else {
             setIsEditMode(false);
+            setCurrentItem(null);
             setBulkData([{}]);
         }
         setIsModalOpen(true);
@@ -167,6 +351,7 @@ const MasterData: React.FC = () => {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setIsEditMode(false);
+        setCurrentItem(null);
         setBulkData([{}]);
     };
     
@@ -193,39 +378,37 @@ const MasterData: React.FC = () => {
         }
     };
     
-    const getAction = (actionType: 'addOrUpdate' | 'delete') => {
-        const key = dataType as keyof typeof timetable;
-        // Fix: Corrected logic for singularizing and capitalizing the data type name.
-        if (typeof key !== 'string' || !key.endsWith('s')) return;
-        const capitalizedKey = (key.charAt(0).toUpperCase() + key.slice(1)).slice(0, -1);
-        const actionName = `${actionType}${capitalizedKey}`;
-        return (timetable as any)[actionName];
-    }
-    
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         let allSuccess = true;
         for (const item of bulkData) {
-            let resultPromise: Promise<any> | undefined;
-            if (dataType === 'subjects') {
-                resultPromise = timetable.addOrUpdateSubject(item);
-            } else if (dataType === 'classGroups') {
-                resultPromise = timetable.addOrUpdateClassGroup(item);
-            } else if (dataType === 'teachers') {
-                 resultPromise = timetable.addOrUpdateTeacher(item);
-            } else if (dataType === 'locations') {
-                 resultPromise = timetable.addOrUpdateLocation(item);
-            } else if (dataType === 'timeSlots') {
-                resultPromise = timetable.addOrUpdateTimeSlot(item);
-            } else {
-                const action = getAction('addOrUpdate');
-                if (action) resultPromise = action(item);
+            if (dataType === 'users' && !isEditMode && !item.password) {
+                alert('กรุณากรอกรหัสผ่านสำหรับผู้ใช้ใหม่');
+                allSuccess = false;
+                break;
+            }
+            if (dataType === 'users' && item.password === '') {
+                 delete item.password;
+            }
+            
+            const idField = dataType === 'subjects' ? 'code' : 'id';
+            const originalId = isEditMode && currentItem ? currentItem[idField] : undefined;
+
+            let resultPromise;
+            switch(dataType){
+                case 'teachers': resultPromise = timetable.addOrUpdateTeacher(item, originalId); break;
+                case 'subjects': resultPromise = timetable.addOrUpdateSubject(item, originalId); break;
+                case 'classGroups': resultPromise = timetable.addOrUpdateClassGroup(item, originalId); break;
+                case 'locations': resultPromise = timetable.addOrUpdateLocation(item, originalId); break;
+                case 'timeSlots': resultPromise = timetable.addOrUpdateTimeSlot(item, originalId); break;
+                case 'users': resultPromise = timetable.addOrUpdateUser(item, originalId); break;
+                default: allSuccess = false;
             }
 
             if (resultPromise) {
                 const result = await resultPromise;
                 if (!result.success) {
-                    alert(result.message);
+                    alert(`เกิดข้อผิดพลาด: ${result.message}`);
                     allSuccess = false;
                     break;
                 }
@@ -235,23 +418,64 @@ const MasterData: React.FC = () => {
         if (allSuccess) handleCloseModal();
     };
 
-    const handleDelete = (item: any) => {
-        if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนี้?')) {
-             if (dataType === 'subjects') {
-                timetable.deleteSubject(item.code);
-            } else if (dataType === 'timeSlots'){
-                 timetable.deleteTimeSlot(item.id);
-            } else {
-                const action = getAction('delete');
-                if (action) action(item.id);
+    const handleDelete = async (item: any) => {
+        if (!item || (dataType === 'users' && typeof item.username !== 'string')) {
+            alert('เกิดข้อผิดพลาด: ข้อมูลสำหรับลบไม่สมบูรณ์');
+            console.error('Delete action cancelled due to invalid item data:', item);
+            return;
+        }
+
+        const isUserManagement = dataType === 'users';
+        const confirmationMessage = isUserManagement
+            ? `คุณต้องการลบผู้ใช้ "${item.username}" ใช่หรือไม่?\n\nการกระทำนี้เป็นการลบข้อมูลอย่างถาวรและไม่สามารถย้อนกลับได้`
+            : 'คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนี้? ข้อมูลจะถูกย้ายไปยังรายการที่ถูกลบ (ถังขยะ) และสามารถกู้คืนได้ในภายหลัง';
+
+        if (window.confirm(confirmationMessage)) {
+            let result: { success: boolean, message?: string } | undefined;
+            switch(dataType){
+                case 'teachers': result = await timetable.deleteTeacher(item.id); break;
+                case 'subjects': result = await timetable.deleteSubject(item.code); break;
+                case 'classGroups': result = await timetable.deleteClassGroup(item.id); break;
+                case 'locations': result = await timetable.deleteLocation(item.id); break;
+                case 'timeSlots': result = await timetable.deleteTimeSlot(item.id); break;
+                case 'users': result = await timetable.deleteUser(item.id); break;
+            }
+            if (result && !result.success) {
+                alert(`เกิดข้อผิดพลาดในการลบ: ${result.message}`);
             }
         }
     };
+
+    const handleRestore = (item: any) => {
+        if (window.confirm('คุณต้องการกู้คืนข้อมูลนี้ใช่หรือไม่?')) {
+             switch(dataType){
+                case 'teachers': timetable.restoreTeacher(item.id); break;
+                case 'subjects': timetable.restoreSubject(item.code); break;
+                case 'classGroups': timetable.restoreClassGroup(item.id); break;
+                case 'locations': timetable.restoreLocation(item.id); break;
+                case 'timeSlots': timetable.restoreTimeSlot(item.id); break;
+            }
+        }
+    }
     
      const handleDownloadTemplate = () => {
         if (!config.csvHeaders) return;
         const headers = config.csvHeaders.join(',');
-        const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
+        
+        // Safely access example data for the current data type
+        const exampleRows = (TEMPLATE_EXAMPLES as any)[dataType] || [];
+        
+        // Convert array of arrays into CSV rows, ensuring values are properly quoted
+        const csvExampleRows = exampleRows.map((row: string[]) => 
+            row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')
+        );
+
+        const csvContent = [headers, ...csvExampleRows].join('\r\n');
+        
+        // Add UTF-8 BOM for better Excel compatibility with Thai characters
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+        
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
@@ -302,17 +526,79 @@ const MasterData: React.FC = () => {
             setIsCsvModalOpen(true);
         };
         reader.readAsText(file);
-        event.target.value = ''; // Reset file input
+        event.target.value = '';
     };
 
-    const renderFormField = (field: any, value: any, onChange: (e: any) => void) => { /* ... implementation from previous step, unchanged ... */
+    const handleToggleMassEdit = () => {
+        if (isMassEditMode) {
+            // Cancel and exit mode
+            setIsMassEditMode(false);
+            setEditedData([]);
+        } else {
+            // Enter mode
+            // Use a deep copy to avoid mutating the original state
+            setEditedData(JSON.parse(JSON.stringify(processedData)));
+            setIsMassEditMode(true);
+        }
+    };
+    
+    const handleMassEditChange = (id: string, fieldName: string, value: any) => {
+        setEditedData(prev =>
+            prev.map(item =>
+                item.id === id ? { ...item, [fieldName]: value } : item
+            )
+        );
+    };
+
+    const handleSaveMassEdit = async () => {
+        setMassEditLoading(true);
+
+        const originalDataMap = new Map(processedData.map(item => [item.id, item]));
+        const changedItems = editedData.filter(editedItem => {
+            const originalItem = originalDataMap.get(editedItem.id);
+            return originalItem && JSON.stringify(originalItem) !== JSON.stringify(editedItem);
+        });
+
+        if (changedItems.length === 0) {
+            alert("ไม่มีการเปลี่ยนแปลงข้อมูล");
+            setIsMassEditMode(false);
+            setMassEditLoading(false);
+            return;
+        }
+
+        const updatePromises = changedItems.map(item => {
+            const { id, ...dataToUpdate } = item;
+            return timetable.addOrUpdateLocation(dataToUpdate, id);
+        });
+
+        try {
+            const results = await Promise.all(updatePromises);
+            const failedUpdates = results.filter(r => !r.success);
+            if (failedUpdates.length > 0) {
+                alert(`บันทึกข้อมูล ${results.length - failedUpdates.length} รายการสำเร็จ, แต่เกิดข้อผิดพลาด ${failedUpdates.length} รายการ`);
+            } else {
+                alert(`บันทึกข้อมูล ${changedItems.length} รายการสำเร็จ`);
+            }
+        } catch (error) {
+            alert("เกิดข้อผิดพลาดร้ายแรงระหว่างการบันทึกข้อมูล");
+            console.error("Mass save error:", error);
+        } finally {
+            setMassEditLoading(false);
+            setIsMassEditMode(false);
+            // Data will be re-fetched by the context automatically after successful updates
+        }
+    };
+
+
+    const renderFormField = (field: any, value: any, onChange: (e: any) => void) => {
         const commonProps = {
             id: field.name,
             name: field.name,
-            required: field.required,
+            required: isEditMode && field.type === 'password' ? false : field.required,
             className: "shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline",
             value: value ?? '',
-            onChange: onChange
+            onChange: onChange,
+            placeholder: field.placeholder || ''
         };
 
         switch (field.type) {
@@ -323,6 +609,9 @@ const MasterData: React.FC = () => {
                         {field.options.map((opt: any, index: number) => {
                             const val = typeof opt === 'object' ? opt.value : opt;
                             const label = field.displayOptions?.find((d:any) => d.value === val)?.label || val;
+                             if (field.name === 'color') {
+                                return <option key={val+index} value={val}><div className="flex items-center"><span className={`w-3 h-3 mr-2 rounded-full ${val}`}></span> {val}</div></option>;
+                            }
                             return <option key={val+index} value={val}>{label}</option>
                         })}
                     </select>
@@ -331,7 +620,7 @@ const MasterData: React.FC = () => {
                  return (
                     <select {...commonProps}>
                         <option value="">-- ไม่มี --</option>
-                        {timetable.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+                        {[...timetable.activeTeachers].sort((a,b) => a.name.localeCompare(b.name, 'th')).map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
                     </select>
                 );
             case 'select_classGroup':
@@ -341,6 +630,7 @@ const MasterData: React.FC = () => {
                        {timetable.classGroups
                            .filter(cg => !cg.parentId)
                            .filter(cg => cg.id !== (isEditMode && bulkData[0]?.id))
+                           .sort((a, b) => a.name.localeCompare(b.name, 'th'))
                            .map((cg) => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
                    </select>
                );
@@ -360,28 +650,42 @@ const MasterData: React.FC = () => {
                     <input 
                         {...commonProps}
                         type={field.type}
-                        disabled={(field.name === 'id' || field.name === 'code') && isEditMode}
+                        disabled={isEditMode && (
+                            (field.name === 'id') || 
+                            (field.name === 'code' && dataType !== 'subjects') || 
+                            (field.name === 'username')
+                        )}
                         step={field.type === 'number' ? (field.name === 'credits' ? '0.1' : '1') : undefined}
                     />
                 );
         }
     };
     
-    const renderTableCell = (item: any, field: any) => { /* ... implementation from previous step, unchanged ... */
+    const renderTableCell = (item: any, field: any) => {
         const value = item[field.name];
+        if (field.type === 'password') return '********';
         if (field.type === 'checkbox') return value ? '✔️ ใช่' : '❌ ไม่ใช่';
         if (field.name === 'responsibleTeacherId' && value) return timetable.teachers.find(t => t.id === value)?.name || 'N/A';
         if (field.name === 'parentId' && value) return timetable.classGroups.find(cg => cg.id === value)?.name || 'N/A';
         if (field.name === 'semester' && field.displayOptions) return field.displayOptions.find((d:any) => d.value === value)?.label || value;
-        return value;
+        
+        if (field.name === 'color' && value) {
+            return (
+                <div className="flex items-center">
+                    <span className={`inline-block w-4 h-4 rounded-full mr-2 border border-gray-400`} style={{ backgroundColor: value }}></span>
+                    <span>{value}</span>
+                </div>
+            );
+        }
+        return String(value ?? '');
     };
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                 <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
-                <div className="flex items-center space-x-2">
-                    {config.csvHeaders && (
+                <div className="flex flex-wrap items-center gap-2">
+                    {config.csvHeaders && !isMassEditMode && (
                         <>
                            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv" className="hidden" />
                            <button onClick={handleFileImportClick} className="flex items-center bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors">
@@ -392,10 +696,80 @@ const MasterData: React.FC = () => {
                             </button>
                         </>
                     )}
-                    <button onClick={() => handleOpenModal()} className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
-                        <PlusCircle size={20} className="mr-2" /> เพิ่มข้อมูล
-                    </button>
+                    {dataType === 'locations' && view === 'active' && (
+                        isMassEditMode ? (
+                            <>
+                                <button onClick={handleSaveMassEdit} disabled={massEditLoading} className="flex items-center bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors disabled:bg-green-300">
+                                    <Save size={20} className="mr-2" /> {massEditLoading ? 'กำลังบันทึก...' : 'บันทึกการแก้ไขทั้งหมด'}
+                                </button>
+                                <button onClick={handleToggleMassEdit} disabled={massEditLoading} className="flex items-center bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
+                                    <XCircle size={20} className="mr-2" /> ยกเลิก
+                                </button>
+                            </>
+                        ) : (
+                            <button onClick={handleToggleMassEdit} className="flex items-center bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors">
+                                <Edit size={20} className="mr-2" /> แก้ไขทั้งหมด
+                            </button>
+                        )
+                    )}
+                    {!isMassEditMode && (
+                        <button onClick={() => handleOpenModal()} className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                            <PlusCircle size={20} className="mr-2" /> เพิ่มข้อมูล
+                        </button>
+                    )}
                 </div>
+            </div>
+
+            <CsvInstructions dataType={dataType} />
+
+            <div className="flex justify-between items-center mb-4">
+                {isPaginatedView ? (
+                    <>
+                        <div className="relative flex-grow max-w-xs">
+                             <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                                <Search className="w-5 h-5 text-gray-400" />
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="ค้นหา..."
+                                value={searchTerm}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className="w-full p-2 pl-10 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            />
+                        </div>
+                        <div className="flex items-center">
+                            <label htmlFor="items-per-page" className="mr-2 text-gray-700">แสดง:</label>
+                            <select
+                                id="items-per-page"
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            >
+                                {[10, 20, 30, 40, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+                            </select>
+                            <span className="ml-2 text-gray-700">รายการ</span>
+                        </div>
+                    </>
+                ) : <div/>}
+                 {isSoftDeletable && !isMassEditMode && (
+                    <button
+                        onClick={() => {
+                            setView(view === 'active' ? 'archived' : 'active');
+                            setCurrentPage(1);
+                            setSearchTerm('');
+                        }}
+                        className="flex items-center bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors"
+                    >
+                        {view === 'active' ? <Archive size={20} className="mr-2" /> : <ArchiveRestore size={20} className="mr-2" />}
+                        {view === 'active' ? `รายการที่ถูกลบ (${(timetable as any)[archivedDataType]?.length || 0})` : 'กลับไปหน้ารายการปกติ'}
+                    </button>
+                )}
             </div>
             
             <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -403,24 +777,136 @@ const MasterData: React.FC = () => {
                     <table className="w-full min-w-max">
                         <thead className="bg-gray-100">
                             <tr>
-                                {fields.map((field: any) => <th key={field.name} className="p-3 text-left font-semibold text-gray-600">{field.label}</th>)}
-                                <th className="p-3 text-center font-semibold text-gray-600">การดำเนินการ</th>
+                                {fields.map((field: any) => (
+                                    <th key={field.name} className="p-3 text-left font-semibold text-gray-600 whitespace-nowrap">
+                                        <button
+                                            type="button"
+                                            onClick={() => !isMassEditMode && requestSort(field.name)}
+                                            className="flex items-center transition-colors hover:text-gray-900"
+                                            disabled={isMassEditMode}
+                                        >
+                                            <span>{field.label}</span>
+                                            <div className="w-4 h-4 ml-1">
+                                                {sortConfig.key === field.name && !isMassEditMode && (
+                                                    sortConfig.direction === 'ascending' ? (
+                                                        <ArrowUp className="h-4 w-4" />
+                                                    ) : (
+                                                        <ArrowDown className="h-4 w-4" />
+                                                    )
+                                                )}
+                                            </div>
+                                        </button>
+                                    </th>
+                                ))}
+                                {isToggleable && view === 'active' && <th className="p-3 text-left font-semibold text-gray-600">สถานะ</th>}
+                                {view === 'archived' && <th className="p-3 text-left font-semibold text-gray-600">วันที่ลบ</th>}
+                                {!isMassEditMode && <th className="p-3 text-center font-semibold text-gray-600">การดำเนินการ</th>}
                             </tr>
                         </thead>
                         <tbody>
-                            {data.map((item: any) => (
-                                <tr key={item.id || item.code} className="border-t hover:bg-gray-50">
-                                    {fields.map((field: any) => <td key={field.name} className="p-3">{renderTableCell(item, field)}</td>)}
-                                    <td className="p-3 text-center">
-                                        <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700 mx-2"><Edit size={18} /></button>
-                                        <button onClick={() => handleDelete(item)} className="text-red-500 hover:text-red-700 mx-2"><Trash2 size={18} /></button>
-                                    </td>
+                            {dataToRender && dataToRender.map((item: any) => (
+                                <tr key={item.id || item.code} className={`border-t hover:bg-gray-50 ${!item.isActive && view === 'active' && !isMassEditMode ? 'bg-gray-100 text-gray-500' : ''}`}>
+                                    {fields.map((field: any) => (
+                                        <td key={field.name} className="p-2 align-middle">
+                                            {isMassEditMode && field.name === 'name' ? (
+                                                <input
+                                                    type="text"
+                                                    value={item.name}
+                                                    onChange={(e) => handleMassEditChange(item.id, 'name', e.target.value)}
+                                                    className="w-full p-1 border rounded"
+                                                />
+                                            ) : isMassEditMode && field.name === 'responsibleTeacherId' ? (
+                                                <select
+                                                    value={item.responsibleTeacherId || ''}
+                                                    onChange={(e) => handleMassEditChange(item.id, 'responsibleTeacherId', e.target.value || null)}
+                                                    className="w-full p-1 border rounded"
+                                                >
+                                                    <option value="">-- ไม่มี --</option>
+                                                    {timetable.activeTeachers.sort((a,b) => a.name.localeCompare(b.name, 'th')).map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                renderTableCell(item, field)
+                                            )}
+                                        </td>
+                                    ))}
+                                    
+                                    {isToggleable && view === 'active' && (
+                                        <td className="p-3">
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={item.isActive}
+                                                    onChange={() => {
+                                                        if (isMassEditMode) {
+                                                            handleMassEditChange(item.id, 'isActive', !item.isActive);
+                                                        } else {
+                                                            updateItemStatus(dataType as any, item.id || item.code, !item.isActive)
+                                                        }
+                                                    }}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                                <span className={`ml-3 text-sm font-medium ${item.isActive ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {item.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                                                </span>
+                                            </label>
+                                        </td>
+                                    )}
+
+                                    {view === 'archived' && <td className="p-3">{item.deletedAt ? new Date(item.deletedAt).toLocaleString('th-TH') : ''}</td>}
+                                    {!isMassEditMode && (
+                                        <td className="p-3 text-center">
+                                            {view === 'active' ? (
+                                                <>
+                                                    <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700 mx-2"><Edit size={18} /></button>
+                                                    <button onClick={() => handleDelete(item)} className="text-red-500 hover:text-red-700 mx-2"><Trash2 size={18} /></button>
+                                                </>
+                                            ) : (
+                                                 <button onClick={() => handleRestore(item)} className="flex items-center justify-center mx-auto bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200">
+                                                    <ArchiveRestore size={16} className="mr-1"/> กู้คืน
+                                                </button>
+                                            )}
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                     {(!dataToRender || dataToRender.length === 0) && <p className="text-center p-4 text-gray-500">ไม่พบข้อมูล</p>}
                 </div>
             </div>
+             {isPaginatedView && processedData.length > 0 && (
+                <div className="flex justify-between items-center py-3 px-3 bg-white border-t rounded-b-lg">
+                    <div className="text-sm text-gray-700">
+                        แสดง <span className="font-medium">{paginatedData.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span>
+                        {' - '}
+                        <span className="font-medium">{Math.min(currentPage * itemsPerPage, (isMassEditMode ? editedData.length : processedData.length))}</span>
+                        {' จาก '}
+                        <span className="font-medium">{isMassEditMode ? editedData.length : processedData.length}</span> รายการ
+                    </div>
+                    <div className="inline-flex -space-x-px rounded-md shadow-sm">
+                        <button
+                            onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                            disabled={currentPage === 1}
+                            className="relative inline-flex items-center rounded-l-md px-3 py-2 text-sm font-medium text-gray-600 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            ก่อนหน้า
+                        </button>
+                        <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300">
+                            หน้า {currentPage} / {totalPages > 0 ? totalPages : 1}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                            disabled={currentPage >= totalPages}
+                            className="relative inline-flex items-center rounded-r-md px-3 py-2 text-sm font-medium text-gray-600 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            ถัดไป
+                        </button>
+                    </div>
+                </div>
+            )}
             <CSVImportModal isOpen={isCsvModalOpen} onClose={() => setIsCsvModalOpen(false)} dataType={dataType} csvData={csvData} />
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={isEditMode ? `แก้ไข${title.replace('จัดการข้อมูล', '')}` : `เพิ่ม${title.replace('จัดการข้อมูล', '')}`}>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -454,6 +940,41 @@ const MasterData: React.FC = () => {
             </Modal>
         </div>
     );
+};
+
+const MasterData: React.FC = () => {
+    const location = useLocation();
+    const { dataType: routeDataType } = useParams<{ dataType: string }>();
+    const { loading, schoolInfo } = useTimetable();
+
+    const getDataTypeFromPath = (): MasterDataType | 'general' | 'users' | undefined => {
+        const path = location.pathname;
+        if (path.endsWith('/settings/users')) return 'users';
+        if (path.endsWith('/settings/general')) return 'general';
+        if (routeDataType && DATA_CONFIG[routeDataType]) return routeDataType as MasterDataType;
+        return undefined;
+    };
+
+    const dataType = getDataTypeFromPath();
+    
+    // While loading initial school info, don't render anything to avoid flashes of wrong content
+    if (loading && !schoolInfo) {
+        return null;
+    }
+
+    if (dataType === 'general') {
+        return <GeneralSettingsPanel />;
+    }
+    
+    if (dataType && DATA_CONFIG[dataType]) {
+        return <DataManagementView dataType={dataType} />;
+    }
+    
+    if (!dataType && !routeDataType) {
+        return <GeneralSettingsPanel />; // Fallback for /settings
+    }
+    
+    return <div>Invalid data type specified.</div>
 };
 
 export default MasterData;

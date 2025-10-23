@@ -7,7 +7,7 @@ This repository contains the source code for the Smart Timetable application, a 
 
 ## Frontend Setup
 
-The frontend application is ready to run. The necessary dependencies are managed via an `importmap` in `index.html`, so no `npm install` is required for the frontend part. You can serve the root directory using a simple web server.
+The frontend application is ready to run. The necessary dependencies are managed via an `importmap` in `index.html`, so no `npm install` is required for the frontend part. You can serve the root directory using any simple web server.
 
 ## Backend (API Server) Setup
 
@@ -15,7 +15,7 @@ The backend server is located in the `/api` directory. Follow these steps to set
 
 ### 1. Database Setup
 
-1.  **Connect to your database server**: Open your preferred SQL client (e.g., DBeaver, phpMyAdmin, or the command-line client).
+1.  **Connect to your MariaDB v10+ server**: Open your preferred SQL client (e.g., DBeaver, phpMyAdmin, or the command-line client).
 2.  **Create and use the database**: Run the following SQL command.
 
     ```sql
@@ -23,7 +23,7 @@ The backend server is located in the `/api` directory. Follow these steps to set
     USE `smart_timetable`;
     ```
 
-3.  **Create tables and insert data**: Execute the entire SQL script found in `api/database.sql`. This will create all the necessary tables and populate them with initial sample data.
+3.  **Create tables and insert data**: Execute the entire SQL script found in `api/database.sql`. This will create all the necessary tables and populate them with initial sample data for a fully functional demo. **Note**: The `school_info` table is the single source of truth for school data. Any `schools` table is obsolete and can be safely removed from the schema.
 
 ### 2. Environment Variables Setup
 
@@ -41,7 +41,7 @@ The server requires a `.env` file for configuration.
     # For Windows
     copy .env.example .env
     ```
-3.  **Update the values** in your new `.env` file with your actual database credentials. It should look like this:
+3.  **Update the values** in your new `.env` file with your actual database credentials and a secure JWT secret. It should look like this:
 
     ```ini
     # Server Port
@@ -53,6 +53,12 @@ The server requires a `.env` file for configuration.
     DB_USER=your_db_username
     DB_PASSWORD=your_db_password
     DB_DATABASE=smart_timetable
+
+    # JWT Secret for signing tokens
+    JWT_SECRET=your_very_strong_and_secret_key_for_jwt
+
+    # Google Gemini API Key for AI Chatbot
+    API_KEY=your_gemini_api_key
     ```
 
 ### 3. Installation
