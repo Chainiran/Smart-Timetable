@@ -160,7 +160,8 @@ const FreeSlotsGrid: React.FC<{
 const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
     const { 
         classGroups, teachers, locations, schedule, schoolInfo, 
-        timeSlots, subjects, publishingStatus, substitutions, fetchSubstitutions 
+        timeSlots, subjects, publishingStatus, substitutions, fetchSubstitutions,
+        activeClassGroups, activeTeachers, activeLocations
     } = useTimetable();
     const { user } = useAuth();
     
@@ -302,8 +303,29 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
         }
         const semesterSchedule = schedule.filter(e => e.academicYear === selectedYear && e.semester === selectedSemesterNum);
         
-        const itemsToPrint = config.ids.map(id => {
-            const item = (viewType === 'class' ? classGroups : viewType === 'teacher' ? teachers : locations).find(i => i.id === id);
+        const sourceArray = viewType === 'class' ? classGroups : viewType === 'teacher' ? teachers : locations;
+        let itemsToSort = sourceArray.filter(item => config.ids.includes(item.id));
+    
+        if (viewType === 'teacher') {
+            const groupOrder = SUBJECT_GROUP_OPTIONS;
+            (itemsToSort as Teacher[]).sort((a, b) => {
+                const indexA = groupOrder.indexOf(a.subjectGroup);
+                const indexB = groupOrder.indexOf(b.subjectGroup);
+                const finalIndexA = indexA === -1 ? Infinity : indexA;
+                const finalIndexB = indexB === -1 ? Infinity : indexB;
+                if (finalIndexA !== finalIndexB) {
+                    return finalIndexA - finalIndexB;
+                }
+                return a.name.localeCompare(b.name, 'th');
+            });
+        } else { // 'class' or 'location'
+            itemsToSort.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        }
+    
+        const sortedIds = itemsToSort.map(item => item.id);
+
+        const itemsToPrint = sortedIds.map(id => {
+            const item = sourceArray.find(i => i.id === id);
             let itemEntries: ScheduleEntry[] = [];
             
             if (viewType === 'class') {
@@ -364,7 +386,11 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
                     newWindow.document.head.innerHTML = `
                         <title>พิมพ์ตาราง</title>
                         ${stylesheets}
+                        <link rel="preconnect" href="https://fonts.googleapis.com">
+                        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
                         <style>
+                            body { font-family: 'Sarabun', sans-serif; }
                             ${orientationStyle}
                             ${zoomStyle}
                             @media print {
@@ -373,10 +399,13 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
                                 .printable-table {
                                     border-collapse: collapse;
                                     width: 100%;
+                                    font-size: 9pt; /* Set a base font size for PDF */
+                                    line-height: 1.2;
                                 }
                                 .printable-table th,
                                 .printable-table td {
                                     border: 1px solid black;
+                                    vertical-align: top;
                                 }
                             }
                             .print-page {
@@ -410,6 +439,7 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
                                 classGroups={classGroups}
                                 academicYear={selectedYear}
                                 semester={selectedSemesterNum}
+                                schedule={schedule}
                             />
                         </React.StrictMode>
                     );
@@ -594,10 +624,10 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
     const title = viewType === 'class' ? 'ตารางเรียน' : viewType === 'teacher' ? 'ตารางสอน' : viewType === 'location' ? 'ตารางการใช้สถานที่' : 'รายการสอนแทน';
 
     const currentViewItems = useMemo(() => {
-        if (viewType === 'class') return classGroups;
-        if (viewType === 'teacher') return teachers;
-        return locations;
-    }, [viewType, classGroups, teachers, locations]);
+        if (viewType === 'class') return activeClassGroups;
+        if (viewType === 'teacher') return activeTeachers;
+        return activeLocations;
+    }, [viewType, activeClassGroups, activeTeachers, activeLocations]);
 
     const sortedItems = useMemo(() =>
         [...currentViewItems].sort((a, b) => a.name.localeCompare(b.name, 'th')),
@@ -725,6 +755,7 @@ const TimetableView: React.FC<TimetableViewProps> = ({ viewType }) => {
                             classGroups={classGroups}
                             academicYear={selectedYear}
                             semester={selectedSemesterNum}
+                            schedule={schedule}
                         />
                     </div>
                 </div>

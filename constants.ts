@@ -1,6 +1,7 @@
 
 
 
+
 export const DAYS_OF_WEEK = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
 
 // Base HSL colors for dynamic generation. Hue (0-360), Saturation (%), Lightness (%)
@@ -97,9 +98,26 @@ export const DATA_CONFIG: any = {
         fields: [
             { name: 'id', label: 'รหัสคาบเรียน', type: 'text', required: true },
             { name: 'period', label: 'คาบที่', type: 'number', required: true },
-            { name: 'startTime', label: 'เวลาเริ่มต้น', type: 'time', required: true },
-            { name: 'endTime', label: 'เวลาสิ้นสุด', type: 'time', required: true },
+            { 
+                name: 'startTime', 
+                label: 'เวลาเริ่มต้น', 
+                type: 'text', 
+                required: true, 
+                placeholder: 'HH:mm',
+                pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$',
+                description: 'ระบุในรูปแบบ 24 ชั่วโมง (HH:mm) เช่น 08:30 หรือ 14:00'
+            },
+            { 
+                name: 'endTime', 
+                label: 'เวลาสิ้นสุด', 
+                type: 'text', 
+                required: true, 
+                placeholder: 'HH:mm',
+                pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$',
+                description: 'ระบุในรูปแบบ 24 ชั่วโมง (HH:mm) เช่น 09:20 หรือ 15:50'
+            },
         ],
+        csvHeaders: ['id', 'period', 'startTime', 'endTime'],
     },
     users: {
         title: 'จัดการผู้ใช้',
@@ -133,5 +151,12 @@ export const TEMPLATE_EXAMPLES: { [key: string]: string[][] } = {
         ['ห้องสมุด', 'สมหญิง เก่งมาก'],
         ['ห้องคอมพิวเตอร์ 1', ''],
         ['สนามฟุตบอล', ''],
+    ],
+    timeSlots: [
+        ['C01', '1', '08:30', '09:20'],
+        ['C02', '2', '09:20', '10:10'],
+        ['C03', '3', '10:10', '11:00'],
+        ['C04', '4', '11:00', '11:50'],
+        ['C05', '5', '12:40', '13:30'],
     ],
 };

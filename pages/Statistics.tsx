@@ -292,7 +292,7 @@ const SubstitutionStats: React.FC<{
 
 // --- Main Statistics Page ---
 const Statistics: React.FC = () => {
-    const { schoolInfo, schedule, teachers, subjects, fetchAttendanceStats, attendanceStats, fetchSubstitutionStats, substitutionStats } = useTimetable();
+    const { schoolInfo, schedule, teachers, subjects, fetchAttendanceStats, attendanceStats, fetchSubstitutionStats, substitutionStats, activeClassGroups, timeSlots } = useTimetable();
     const [activeTab, setActiveTab] = useState<'load' | 'attendance' | 'substitution'>('load');
     const [selectedSubjectGroup, setSelectedSubjectGroup] = useState('all');
     const [dateRange, setDateRange] = useState({
@@ -325,11 +325,17 @@ const Statistics: React.FC = () => {
     // --- Data processing for Teaching Load ---
     const processedLoadStats: TeacherLoadStat[] = useMemo(() => {
         if (!schoolInfo || schedule.length === 0) return [];
+
+        const activeClassGroupIds = new Set(activeClassGroups.map(cg => cg.id));
+        const activeTimeSlotIds = new Set(timeSlots.map(ts => ts.id));
+
         const teacherStatsMap = new Map<string, TeacherLoadStat>();
         const currentSchedule = schedule.filter(e =>
             e.academicYear === schoolInfo.academicYear &&
             e.semester === schoolInfo.currentSemester &&
-            e.customActivity?.trim() !== 'พักเที่ยง'
+            e.customActivity?.trim() !== 'พักเที่ยง' &&
+            activeTimeSlotIds.has(e.timeSlotId) &&
+            (!e.classGroupId || activeClassGroupIds.has(e.classGroupId))
         );
         for (const entry of currentSchedule) {
             if (entry.teacherIds.length === 0 || (!entry.subjectCode && !entry.customActivity)) continue;
@@ -364,7 +370,7 @@ const Statistics: React.FC = () => {
             }
         }
         return Array.from(teacherStatsMap.values());
-    }, [schedule, teachers, subjects, schoolInfo]);
+    }, [schedule, teachers, subjects, schoolInfo, activeClassGroups, timeSlots]);
 
     const displayedLoadStats = useMemo(() => {
         const filtered = selectedSubjectGroup === 'all'

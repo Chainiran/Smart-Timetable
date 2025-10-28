@@ -26,7 +26,13 @@ const processDbRow = (row) => {
 router.get('/', async (req, res) => {
     const { id_school } = req.params;
     try {
-        const [results] = await db.query('SELECT * FROM schedule WHERE id_school = ?', [id_school]);
+        const query = `
+            SELECT s.* 
+            FROM schedule s
+            JOIN time_slots ts ON s.timeSlotId = ts.id AND s.id_school = ts.id_school
+            WHERE s.id_school = ? AND ts.deletedAt IS NULL
+        `;
+        const [results] = await db.query(query, [id_school]);
         const processedResults = results.map(processDbRow);
         res.json(processedResults);
     } catch (err) {
@@ -37,7 +43,7 @@ router.get('/', async (req, res) => {
 
 
 const findConflict = async (entry, connection) => {
-    const { id_school, day, timeSlotId, teacherIds, locationId, academicYear, semester, id: entryIdToExclude } = entry;
+    const { id_school, day, timeSlotId, teacherIds, locationId, classGroupId, academicYear, semester, id: entryIdToExclude } = entry;
     
     const conditions = ['id_school = ?', 'day = ?', 'timeSlotId = ?', 'academicYear = ?', 'semester = ?'];
     const params = [id_school, day, timeSlotId, academicYear, semester];
@@ -51,6 +57,11 @@ const findConflict = async (entry, connection) => {
         conflictChecks.push('locationId = ?');
         params.push(locationId);
     }
+    if (classGroupId) {
+        conflictChecks.push('classGroupId = ?');
+        params.push(classGroupId);
+    }
+
     if (conflictChecks.length === 0) return null;
     conditions.push(`(${conflictChecks.join(' OR ')})`);
 
@@ -66,9 +77,11 @@ const findConflict = async (entry, connection) => {
         const conflict = processDbRow(conflictingEntries[0]);
         const teacherConflict = teacherIds && teacherIds.length > 0 && conflict.teacherIds.some(tid => teacherIds.includes(tid));
         const locationConflict = locationId && conflict.locationId === locationId;
+        const classGroupConflict = classGroupId && conflict.classGroupId === classGroupId;
 
         if (teacherConflict) return { type: 'teacher', conflictingEntry: conflict, message: 'ครูผู้สอนมีคาบสอนซ้อนในเวลาเดียวกัน' };
         if (locationConflict) return { type: 'location', conflictingEntry: conflict, message: 'สถานที่ถูกใช้งานในเวลาเดียวกัน' };
+        if (classGroupConflict) return { type: 'classGroup', conflictingEntry: conflict, message: 'กลุ่มเรียนนี้มีคาบเรียนอื่นในเวลาเดียวกัน' };
     }
     
     return null;
@@ -177,6 +190,98 @@ router.post('/resolve-conflict', authenticateToken, checkRole(['admin', 'super']
         await connection.rollback();
         console.error('[API/schedule] resolve-conflict Error:', err);
         res.status(500).json({ success: false, message: 'Failed to resolve conflict.', error: err.message });
+    } finally {
+        connection.release();
+    }
+});
+
+router.post('/bulk-activity', authenticateToken, checkRole(['admin', 'super']), async (req, res) => {
+    const { id_school } = req.params;
+    const { customActivity, days, timeSlotIds, classGroupIds, teacherIds, locationId } = req.body;
+
+    if (!customActivity || !Array.isArray(days) || days.length === 0 || !Array.isArray(timeSlotIds) || timeSlotIds.length === 0 || ((!Array.isArray(classGroupIds) || classGroupIds.length === 0) && (!Array.isArray(teacherIds) || teacherIds.length === 0))) {
+        return res.status(400).json({ message: "Missing required fields: customActivity, days, timeSlotIds, and at least one of classGroupIds or teacherIds." });
+    }
+
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const [infoRows] = await connection.query('SELECT academicYear, currentSemester FROM school_info WHERE id_school = ?', [id_school]);
+        if (infoRows.length === 0) {
+            await connection.rollback();
+            return res.status(500).json({ message: 'School info not configured.' });
+        }
+        const { academicYear, currentSemester: semester } = infoRows[0];
+
+        let successCount = 0;
+        let conflictCount = 0;
+        const conflicts = [];
+
+        const classGroupLoopTargets = (classGroupIds && classGroupIds.length > 0) ? classGroupIds : [null];
+
+        for (const day of days) {
+            for (const timeSlotId of timeSlotIds) {
+                for (const classGroupId of classGroupLoopTargets) {
+                    const entryData = {
+                        id_school, day, timeSlotId, 
+                        classGroupId: classGroupId, // This will be null if classGroupIds is empty
+                        teacherIds: teacherIds || [],
+                        locationId: locationId || null,
+                        academicYear, semester,
+                        customActivity
+                    };
+                    
+                    const conflict = await findConflict(entryData, connection);
+                    
+                    if (conflict) {
+                        conflictCount++;
+                        let conflictGroupName = 'N/A';
+                        if (classGroupId) {
+                            const [classGroupRows] = await connection.query('SELECT name from class_groups WHERE id = ?', [classGroupId]);
+                            if (classGroupRows.length > 0) {
+                                conflictGroupName = classGroupRows[0].name;
+                            }
+                        }
+                        const [timeSlotRows] = await connection.query('SELECT period from time_slots WHERE id = ?', [timeSlotId]);
+                        const timeSlotName = timeSlotRows.length > 0 ? `คาบ ${timeSlotRows[0].period}` : 'Unknown Time';
+                        
+                        conflicts.push({ day, timeSlot: timeSlotName, classGroup: conflictGroupName, reason: conflict.message });
+                        continue; // Skip this entry
+                    }
+
+                    const entryForDb = {
+                        id: uuidv4(),
+                        id_school, 
+                        classGroupId: classGroupId, // This will be null if classGroupIds is empty
+                        day, timeSlotId, customActivity,
+                        teacherIds: JSON.stringify(teacherIds || []),
+                        locationId: locationId || null,
+                        academicYear, semester
+                    };
+
+                    const columns = Object.keys(entryForDb).filter(k => entryForDb[k] !== undefined);
+                    const placeholders = columns.map(() => '?').join(', ');
+                    const values = columns.map(k => entryForDb[k]);
+
+                    await connection.query(`INSERT INTO schedule (${columns.join(', ')}) VALUES (${placeholders})`, values);
+                    successCount++;
+                }
+            }
+        }
+        
+        await connection.commit();
+        
+        let message = `เพิ่มกิจกรรมสำเร็จ ${successCount} รายการ`;
+        if (conflictCount > 0) {
+            message += ` | ข้าม ${conflictCount} รายการเนื่องจากเกิดข้อขัดแย้ง`;
+        }
+        
+        res.status(200).json({ success: true, message, conflicts });
+    } catch (err) {
+        await connection.rollback();
+        console.error('[API/schedule] POST /bulk-activity Error:', err);
+        res.status(500).json({ message: 'Database error occurred during bulk activity creation.', error: err.message });
     } finally {
         connection.release();
     }

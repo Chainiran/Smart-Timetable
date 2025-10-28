@@ -30,7 +30,7 @@ interface PrintableTimetableProps {
     classGroups: ClassGroup[];
     academicYear: string;
     semester: number;
-    layout: 1 | 2 | 4 | 6;
+    layout: 1 | 2 | 4 | 6 | 10;
     schoolInfo: SchoolInfo | null;
 }
 
@@ -56,6 +56,11 @@ const DAY_ABBREVIATIONS: { [key: string]: string } = {
     'อาทิตย์': 'อา.'
 };
 
+const truncateText = (text: string | undefined, limit: number = 10): string => {
+    if (!text) return '';
+    return text.length > limit ? text.substring(0, limit) : text;
+};
+
 
 const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
     itemId,
@@ -77,6 +82,11 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
 }) => {
     
     const finalTitle = useMemo(() => {
+        // If an empty title is passed (e.g., for individual layout), don't generate a title.
+        if (!title) {
+            return '';
+        }
+        
         const schoolName = viewType !== 'location' && schoolInfo?.name ? ` ${schoolInfo.name}` : '';
         let titlePrefix = title;
 
@@ -91,7 +101,7 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
             }
         }
         
-        return `${titlePrefix} ภาคเรียนที่ ${semester}/${academicYear}${schoolName}`;
+        return `${titlePrefix} ${semester}/${academicYear}${schoolName}`;
     }, [title, semester, academicYear, viewType, itemId, locations, teachers, schoolInfo]);
 
     const getEntriesForCell = (day: string, timeSlotId: string) => {
@@ -152,8 +162,20 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
             cellContentClass: 'text-[8px]',
             cellContentPaddingClass: 'p-1',
         };
-
-        if (layout === 4) {
+        
+        // Layout 10 (Individual) uses the same large style as layout 1
+        if (layout === 10) {
+             sizes = {
+                headerFontSize: 'text-lg',
+                tableHeaderPeriodSize: 'text-sm',
+                tableHeaderTimeSize: 'text-xs',
+                dayFontSize: 'text-sm',
+                cellPadding: 'p-0.5',
+                cellContentClass: 'text-xs',
+                cellContentPaddingClass: 'p-1',
+            };
+        }
+        else if (layout === 4) {
             sizes = {
                 headerFontSize: 'text-[10px]',
                 tableHeaderPeriodSize: 'text-[7px]',
@@ -177,20 +199,16 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
         return sizes;
     }, [layout]);
 
-    const renderCellContent = (entry: ScheduleEntry) => {
+    const renderFlexibleCellContent = (entry: ScheduleEntry) => {
         const subject = entry.subjectCode ? subjects.find(s => s.code === entry.subjectCode) : null;
         const entryTeachers = teachers.filter(t => entry.teacherIds.includes(t.id));
         const location = locations.find(l => l.id === entry.locationId);
         const classGroup = classGroups.find(cg => cg.id === entry.classGroupId);
-
         const bgColorStyle = { backgroundColor: getDynamicBgColor(entry) };
-
         const isCustomActivity = !!entry.customActivity;
         const nameToShow = isCustomActivity ? entry.customActivity : subject?.name;
         const codeToShow = isCustomActivity ? entry.customActivity : subject?.code;
-        
         const getFirstName = (fullName?: string) => (fullName || '').split(' ')[0];
-
         const teacherName = showCoteachers
             ? entryTeachers.map(t => getFirstName(t.name)).join(', ')
             : getFirstName(entryTeachers[0]?.name);
@@ -210,12 +228,14 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
     };
 
     return (
-        <div className="p-2 h-full flex flex-col">
-             <div className="text-center mb-1">
-                <h3 className={`${headerFontSize} font-bold`}>
-                    {finalTitle}
-                </h3>
-            </div>
+        <div className="p-2">
+            {finalTitle && (
+                <div className="text-center mb-1">
+                    <h3 className={`${headerFontSize} font-bold`}>
+                        {finalTitle}
+                    </h3>
+                </div>
+            )}
             <table className="w-full table-fixed flex-grow-1 h-full printable-table">
                 <thead>
                     <tr className="bg-gray-200">
@@ -228,20 +248,74 @@ const PrintableTimetable: React.FC<PrintableTimetableProps> = ({
                         ))}
                     </tr>
                 </thead>
-                <tbody className="h-full grid grid-rows-5">
-                    {DAYS_OF_WEEK.slice(0, 5).map(day => (
-                        <tr key={day} className="flex">
+                <tbody>
+                     {DAYS_OF_WEEK.slice(0, 5).map(day => (
+                        <tr key={day}>
                             <td className={`p-1 font-bold text-gray-700 text-center ${dayFontSize} w-10 flex items-center justify-center`}>
                                 {DAY_ABBREVIATIONS[day] || day}
                             </td>
                             {timeSlots.map(slot => {
                                 const cellEntries = getEntriesForCell(day, slot.id);
+
+                                // Special "fixed size" layout for 6-per-page
+                                if (layout === 6) {
+                                    const firstEntry = cellEntries[0];
+                                    const bgColorStyle = firstEntry ? { backgroundColor: getDynamicBgColor(firstEntry) } : {};
+                                    
+                                    let lines: React.ReactNode[] = [];
+                                    if (firstEntry) {
+                                        const subject = firstEntry.subjectCode ? subjects.find(s => s.code === firstEntry.subjectCode) : null;
+                                        const entryTeachers = teachers.filter(t => firstEntry.teacherIds.includes(t.id));
+                                        const location = locations.find(l => l.id === firstEntry.locationId);
+                                        const classGroup = classGroups.find(cg => cg.id === firstEntry.classGroupId);
+                                        const getFirstName = (fullName?: string) => (fullName || '').split(' ')[0];
+                                        const teacherName = showCoteachers
+                                            ? entryTeachers.map(t => getFirstName(t.name)).join(', ')
+                                            : getFirstName(entryTeachers[0]?.name);
+                                        const isCustomActivity = !!firstEntry.customActivity;
+                                        const codeToShow = isCustomActivity ? firstEntry.customActivity : subject?.code;
+                                        const nameToShow = isCustomActivity ? firstEntry.customActivity : subject?.name;
+
+                                        // Build lines based on options, prioritizing code
+                                        if (displayOptions.showSubjectCode && codeToShow) lines.push(<div key="line-code">{truncateText(codeToShow)}</div>);
+                                        else if (displayOptions.showSubjectName && nameToShow) lines.push(<div key="line-name" className="font-bold">{truncateText(nameToShow)}</div>);
+
+                                        if (viewType !== 'teacher' && displayOptions.showTeacher && teacherName) lines.push(<div key="line-teacher">{truncateText(teacherName)}</div>);
+                                        if (viewType !== 'class' && displayOptions.showClassGroup && classGroup?.name) lines.push(<div key="line-class" className="font-semibold">{truncateText(classGroup.name)}</div>);
+                                        if (displayOptions.showLocation && location?.name) lines.push(<div key="line-loc">{truncateText(location.name)}</div>);
+
+                                        lines = lines.slice(0, 3);
+                                    }
+
+                                    while(lines.length < 3) {
+                                        lines.push(<div key={`pad-${lines.length}`}>&nbsp;</div>);
+                                    }
+
+                                    return (
+                                        <td style={bgColorStyle} key={slot.id} className={`w-full`}>
+                                              <div className={`w-full`}>
+                                               <div style={{
+                                                display:'flex',
+                                                justifyContent:'center',
+                                                alignItems:'center',
+                                                flexDirection:'column',
+                                                padding:'2px',
+                                                height:'58px',
+                                                width:'68px',
+                                                boxSizing:'border-box'
+                                               }} >{lines}</div>
+                                            </div>
+                                        </td>
+                                    );
+                                }
+                                
+                                // Default flexible layout for other sizes
                                 return (
-                                    <td key={slot.id} className={`align-top ${cellPadding} flex-1`}>
-                                         <div className="flex flex-col space-y-px h-full">
+                                    <td key={slot.id}>
+                                        <div className="flex flex-col justify-around">
                                             {cellEntries.map(entry => (
                                                 <div key={entry.id}>
-                                                    {renderCellContent(entry)}
+                                                    {renderFlexibleCellContent(entry)}
                                                 </div>
                                             ))}
                                         </div>

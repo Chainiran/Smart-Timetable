@@ -21,7 +21,7 @@ interface PrintModalProps {
     onClose: () => void;
     onSubmit: (config: {
         ids: string[];
-        layout: 1 | 2 | 4 | 6;
+        layout: 1 | 2 | 4 | 6 | 10;
         displayOptions: DisplayOptions;
         colorBy: ColorBy;
         showCoteachers: boolean;
@@ -43,7 +43,7 @@ const PrintModal: React.FC<PrintModalProps> = ({
 }) => {
     const [printScope, setPrintScope] = useState<'all' | 'custom'>('all');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [layout, setLayout] = useState<1 | 2 | 4 | 6>(2);
+    const [layout, setLayout] = useState<1 | 2 | 4 | 6 | 10>(2);
     const [displayOptions, setDisplayOptions] = useState<DisplayOptions>(initialDisplayOptions);
     const [colorBy, setColorBy] = useState<ColorBy>(initialColorBy);
     const [showCoteachers, setShowCoteachers] = useState(false);
@@ -97,7 +97,13 @@ const PrintModal: React.FC<PrintModalProps> = ({
                 {/* --- Layout --- */}
                  <fieldset>
                     <legend className="text-lg font-medium text-gray-900 mb-2">2. เลือกรูปแบบการจัดวาง (A4)</legend>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 flex-wrap">
+                        {viewType === 'teacher' && (
+                           <label className="flex items-center space-x-2 cursor-pointer">
+                               <input type="radio" name="layout" value={10} checked={layout === 10} onChange={() => setLayout(10)} className="form-radio h-4 w-4 text-blue-600" />
+                               <span>ตารางสอนรายบุคคล (แนวตั้ง)</span>
+                           </label>
+                        )}
                         <label className="flex items-center space-x-2 cursor-pointer"><input type="radio" name="layout" value={1} checked={layout === 1} onChange={() => setLayout(1)} className="form-radio h-4 w-4 text-blue-600" /><span>1 ตาราง/หน้า (แนวนอน)</span></label>
                         <label className="flex items-center space-x-2 cursor-pointer"><input type="radio" name="layout" value={2} checked={layout === 2} onChange={() => setLayout(2)} className="form-radio h-4 w-4 text-blue-600" /><span>2 ตาราง/หน้า (แนวตั้ง)</span></label>
                         <label className="flex items-center space-x-2 cursor-pointer"><input type="radio" name="layout" value={4} checked={layout === 4} onChange={() => setLayout(4)} className="form-radio h-4 w-4 text-blue-600" /><span>4 ตาราง/หน้า (แนวนอน)</span></label>

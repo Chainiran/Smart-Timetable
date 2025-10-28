@@ -268,6 +268,15 @@ export interface TimetableContextType {
     addClassGroupsInBulk: (newClassGroups: (Omit<ClassGroup, 'id' | 'id_school' | 'parentId'> & { parentName?: string })[]) => Promise<ApiResponse>;
     addSubjectsInBulk: (newSubjects: Omit<Subject, 'id_school'>[]) => Promise<ApiResponse>;
     addLocationsInBulk: (newLocations: (Omit<Location, 'id' | 'id_school' | 'responsibleTeacherId'> & { responsibleTeacherName?: string})[]) => Promise<ApiResponse>;
+    addTimeSlotsInBulk: (newTimeSlots: Omit<TimeSlot, 'id_school'>[]) => Promise<ApiResponse>;
+    addBulkSpecialActivity: (activityData: {
+        customActivity: string;
+        days: string[];
+        timeSlotIds: string[];
+        classGroupIds: string[];
+        teacherIds: string[];
+        locationId: string;
+    }) => Promise<ApiResponse>;
     // User Management
     users: User[];
     fetchUsers: () => Promise<void>;

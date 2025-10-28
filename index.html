@@ -6,7 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Smart Timetable</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
     <style>
+      /* Apply Sarabun font to the whole application */
+      body {
+        font-family: 'Sarabun', sans-serif;
+      }
+      
       @media print {
         /* Hide elements intended only for screen */
         .no-print {
@@ -24,6 +32,7 @@
           margin: 0;
           padding: 0;
           background-color: #fff;
+          font-family: 'Sarabun', sans-serif; /* Ensure font is applied for printing */
         }
         
         @page {
@@ -57,10 +66,12 @@
         .print-container table {
           width: 100%;
           table-layout: fixed; /* Force columns to fit page width */
-          font-size: 8pt;     /* Reduce font size to fit more content */
+          font-size: 9pt;     /* Increase base font size slightly for better readability */
+          line-height: 1.2;   /* Adjust line-height for better spacing */
         }
         .print-container th, .print-container td {
           word-wrap: break-word; /* Wrap long text */
+          vertical-align: top; /* Align content to the top */
         }
 
         /* --- Scenario 2: Generating a PDF from the dedicated #print-root --- */

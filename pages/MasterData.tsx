@@ -3,8 +3,8 @@ import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useTimetable } from '../context/TimetableContext';
 import Modal from '../components/Modal';
 import { DATA_CONFIG, SEMESTER_OPTIONS, TEMPLATE_EXAMPLES, SUBJECT_GROUP_OPTIONS } from '../constants';
-import { PlusCircle, Edit, Trash2, Save, Trash, Plus, Upload, Download, Archive, ArchiveRestore, Search, ArrowUp, ArrowDown, XCircle } from 'lucide-react';
-import { SchoolInfo, MasterDataType } from '../types';
+import { PlusCircle, Edit, Trash2, Save, Trash, Plus, Upload, Download, Archive, ArchiveRestore, Search, ArrowUp, ArrowDown, XCircle, FileDown } from 'lucide-react';
+import { SchoolInfo, MasterDataType, TimeSlot } from '../types';
 
 const GeneralSettingsPanel: React.FC = () => {
     const { schoolInfo, updateSchoolInfo, fetchPublishingStatus } = useTimetable();
@@ -102,6 +102,7 @@ const CSVImportModal: React.FC<{
             case 'subjects': resultPromise = timetable.addSubjectsInBulk(csvData); break;
             case 'classGroups': resultPromise = timetable.addClassGroupsInBulk(csvData); break;
             case 'locations': resultPromise = timetable.addLocationsInBulk(csvData); break;
+            case 'timeSlots': resultPromise = timetable.addTimeSlotsInBulk(csvData); break;
         }
         if (resultPromise) {
             const result = await resultPromise;
@@ -191,6 +192,16 @@ const CsvInstructions: React.FC<{ dataType: string }> = ({ dataType }) => {
                 </ul>
             );
             break;
+        case 'timeSlots':
+            instructions = (
+                <ul className="list-disc list-inside space-y-1">
+                    <li><b>id:</b> รหัสคาบเรียน (ต้องไม่ซ้ำกัน เช่น C01, C02)</li>
+                    <li><b>period:</b> ลำดับคาบที่ (ตัวเลข เช่น 1, 2, 3)</li>
+                    <li><b>startTime:</b> เวลาเริ่มต้น (รูปแบบ HH:mm เช่น 08:30)</li>
+                    <li><b>endTime:</b> เวลาสิ้นสุด (รูปแบบ HH:mm เช่น 09:20)</li>
+                </ul>
+            );
+            break;
     }
 
     if (!instructions) return null;
@@ -205,7 +216,7 @@ const CsvInstructions: React.FC<{ dataType: string }> = ({ dataType }) => {
 };
 
 const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ dataType }) => {
-    const { fetchUsers, fetchArchivedData, updateItemStatus, ...timetable } = useTimetable();
+    const { fetchUsers, fetchArchivedData, updateItemStatus, addTimeSlotsInBulk, ...timetable } = useTimetable();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
@@ -529,6 +540,61 @@ const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ 
         event.target.value = '';
     };
 
+    const handleExportCsv = () => {
+        if (processedData.length === 0) {
+            alert("ไม่มีข้อมูลสำหรับส่งออก");
+            return;
+        }
+    
+        const headers = config.csvHeaders;
+    
+        const escapeCsvCell = (cell: any): string => {
+            const str = String(cell ?? '');
+            // Quote fields that contain commas, double quotes, or newlines
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+    
+        const dataRows = processedData.map(item => {
+            const row: any[] = [];
+            headers.forEach((header: string) => {
+                switch (`${dataType}:${header}`) {
+                    case 'locations:responsibleTeacherName':
+                        const teacher = timetable.teachers.find(t => t.id === item.responsibleTeacherId);
+                        row.push(teacher ? teacher.name : '');
+                        break;
+                    case 'classGroups:parentName':
+                        const parent = timetable.classGroups.find(cg => cg.id === item.parentId);
+                        row.push(parent ? parent.name : '');
+                        break;
+                    default:
+                        // This handles direct mappings like 'teachers:name' -> item['name']
+                        row.push(item[header]);
+                }
+            });
+            return row.map(escapeCsvCell).join(',');
+        });
+    
+        const csvContent = [
+            headers.join(','),
+            ...dataRows
+        ].join('\r\n');
+    
+        // Create and download the file with UTF-8 BOM
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${dataType}_export_${view}_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     const handleToggleMassEdit = () => {
         if (isMassEditMode) {
             // Cancel and exit mode
@@ -650,6 +716,8 @@ const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ 
                     <input 
                         {...commonProps}
                         type={field.type}
+                        pattern={field.pattern}
+                        title={field.pattern ? "กรุณากรอกข้อมูลตามรูปแบบที่กำหนด (HH:mm)" : undefined}
                         disabled={isEditMode && (
                             (field.name === 'id') || 
                             (field.name === 'code' && dataType !== 'subjects') || 
@@ -693,6 +761,9 @@ const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ 
                             </button>
                              <button onClick={handleDownloadTemplate} className="flex items-center bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
                                 <Download size={20} className="mr-2" /> โหลดเทมเพลต
+                            </button>
+                            <button onClick={handleExportCsv} className="flex items-center bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 transition-colors">
+                                <FileDown size={20} className="mr-2" /> ส่งออก CSV
                             </button>
                         </>
                     )}
@@ -923,11 +994,12 @@ const DataManagementView: React.FC<{ dataType: MasterDataType | 'users' }> = ({ 
                                         {field.label}
                                     </label>
                                     {renderFormField(field, item[field.name], (e: any) => handleBulkChange(index, e))}
+                                    {field.description && <p className="text-xs text-gray-500 mt-1">{field.description}</p>}
                                 </div>
                             ))}
                         </div>
                     ))}
-                    {!isEditMode && ['teachers', 'subjects', 'classGroups', 'locations'].includes(dataType) && (
+                    {!isEditMode && ['teachers', 'subjects', 'classGroups', 'locations', 'timeSlots'].includes(dataType) && (
                         <button type="button" onClick={addBulkRow} className="flex items-center text-blue-600 hover:text-blue-800 font-medium">
                            <Plus size={18} className="mr-1"/> เพิ่มรายการ
                         </button>

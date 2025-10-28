@@ -2,11 +2,12 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useTimetable } from '../context/TimetableContext';
 import TimetableGrid from '../components/TimetableGrid';
 import Modal from '../components/Modal';
-import { ScheduleEntry, Subject, Location, ClassGroup, SchoolInfo } from '../types';
-import { CheckCircle, Search, X, Settings, ChevronDown, ChevronUp, Move, Edit2, Filter } from 'lucide-react';
+import { ScheduleEntry, Subject, Location, ClassGroup, SchoolInfo, ApiResponse } from '../types';
+import { CheckCircle, Search, X, Settings, ChevronDown, ChevronUp, Move, Edit2, Filter, Plus } from 'lucide-react';
 import { SUBJECT_GROUP_OPTIONS, SUBJECT_GROUP_COLORS, DAYS_OF_WEEK } from '../constants';
 import AIChatbot from '../components/AIChatbot';
 import { useAuth } from '../context/AuthContext';
+import SearchableMultiSelect from '../components/SearchableMultiSelect';
 
 type ConflictState = {
     message: string;
@@ -329,6 +330,145 @@ const SearchableSubjectSelect: React.FC<{
     );
 }
 
+interface BulkSpecialActivityModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onComplete: (result: ApiResponse) => void;
+}
+
+const BulkSpecialActivityModal: React.FC<BulkSpecialActivityModalProps> = ({ isOpen, onClose, onComplete }) => {
+    const { addBulkSpecialActivity, activeClassGroups, timeSlots, activeTeachers, activeLocations } = useTimetable();
+
+    const [customActivity, setCustomActivity] = useState('');
+    const [selectedDays, setSelectedDays] = useState<string[]>([]);
+    const [selectedTimeSlotIds, setSelectedTimeSlotIds] = useState<string[]>([]);
+    const [selectedClassGroupIds, setSelectedClassGroupIds] = useState<string[]>([]);
+    const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    const sortedClassGroups = useMemo(() => [...activeClassGroups].sort((a,b) => a.name.localeCompare(b.name, 'th', { numeric: true })), [activeClassGroups]);
+    const sortedTeachers = useMemo(() => [...activeTeachers].sort((a,b) => a.name.localeCompare(b.name, 'th')), [activeTeachers]);
+    const sortedLocations = useMemo(() => [...activeLocations].sort((a,b) => a.name.localeCompare(b.name, 'th')), [activeLocations]);
+
+    const resetState = () => {
+        setCustomActivity('');
+        setSelectedDays([]);
+        setSelectedTimeSlotIds([]);
+        setSelectedClassGroupIds([]);
+        setSelectedTeacherIds([]);
+        setSelectedLocationId('');
+        setIsSaving(false);
+    };
+
+    useEffect(() => {
+        if (!isOpen) {
+            resetState();
+        }
+    }, [isOpen]);
+
+    const handleCheckboxChange = (setter: React.Dispatch<React.SetStateAction<string[]>>, value: string) => {
+        setter(prev => prev.includes(value) ? prev.filter(item => item !== value) : [...prev, value]);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!customActivity || selectedDays.length === 0 || selectedTimeSlotIds.length === 0 || (selectedClassGroupIds.length === 0 && selectedTeacherIds.length === 0)) {
+            alert('กรุณากรอกข้อมูลให้ครบถ้วน: ชื่อกิจกรรม, วัน, คาบเรียน, และต้องเลือกกลุ่มเรียนหรือครูผู้สอนอย่างน้อย 1 รายการ');
+            return;
+        }
+
+        setIsSaving(true);
+        const result = await addBulkSpecialActivity({
+            customActivity,
+            days: selectedDays,
+            timeSlotIds: selectedTimeSlotIds,
+            classGroupIds: selectedClassGroupIds,
+            teacherIds: selectedTeacherIds,
+            locationId: selectedLocationId,
+        });
+        setIsSaving(false);
+        onComplete(result);
+    };
+    
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="เพิ่มกิจกรรมพิเศษ (หลายรายการ)">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                    <label className="block text-gray-700 font-bold mb-2">ชื่อกิจกรรม</label>
+                    <input type="text" value={customActivity} onChange={e => setCustomActivity(e.target.value)} required className="w-full p-2 border rounded" />
+                    <div className="flex flex-wrap gap-2 pt-2">
+                        {['พักเที่ยง', 'ซ่อมเสริม', 'ลูกเสือ', 'บำเพ็ญฯ', 'สวดมนต์', 'PLC', 'ประชุมระดับชั้น', 'โฮมรูม'].map((activity) => (
+                            <button
+                                key={activity}
+                                type="button"
+                                onClick={() => setCustomActivity(activity)}
+                                className="px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded-full hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 transition-colors"
+                            >
+                                {activity}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                
+                <div>
+                    <label className="block text-gray-700 font-bold mb-2">วัน</label>
+                    <div className="flex flex-wrap gap-4">
+                        {DAYS_OF_WEEK.slice(0, 5).map(day => (
+                            <label key={day} className="flex items-center space-x-2"><input type="checkbox" value={day} checked={selectedDays.includes(day)} onChange={() => handleCheckboxChange(setSelectedDays, day)} className="h-4 w-4 rounded" /> <span>{day}</span></label>
+                        ))}
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-gray-700 font-bold mb-2">คาบเรียน</label>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-40 overflow-y-auto p-2 border rounded-md">
+                        {timeSlots.map(slot => (
+                             <label key={slot.id} className="flex items-center space-x-2 p-1 hover:bg-gray-100 rounded-md"><input type="checkbox" value={slot.id} checked={selectedTimeSlotIds.includes(slot.id)} onChange={() => handleCheckboxChange(setSelectedTimeSlotIds, slot.id)} className="h-4 w-4 rounded" /> <span>คาบ {slot.period}</span></label>
+                        ))}
+                    </div>
+                </div>
+
+                <SearchableMultiSelect
+                    label="กลุ่มเรียน*"
+                    options={sortedClassGroups}
+                    selectedIds={selectedClassGroupIds}
+                    onChange={setSelectedClassGroupIds}
+                    placeholder="ค้นหากลุ่มเรียน..."
+                    widthClass="w-full"
+                />
+
+                <SearchableMultiSelect
+                    label="ครูผู้สอน (ถ้ามี)*"
+                    options={sortedTeachers}
+                    selectedIds={selectedTeacherIds}
+                    onChange={setSelectedTeacherIds}
+                    placeholder="ค้นหาครู..."
+                    widthClass="w-full"
+                    viewType="teacher"
+                    allTeachers={activeTeachers}
+                />
+
+                <div>
+                    <label className="block text-gray-700 font-bold mb-2">สถานที่ (ถ้ามี)</label>
+                    <select value={selectedLocationId} onChange={e => setSelectedLocationId(e.target.value)} className="w-full p-2 border rounded">
+                        <option value="">-- ไม่ระบุ --</option>
+                        {sortedLocations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                    </select>
+                </div>
+
+                <p className="text-xs text-gray-500 !mt-2">* ต้องเลือกอย่างน้อย 1 รายการระหว่างกลุ่มเรียนหรือครูผู้สอน</p>
+                <div className="flex justify-end pt-4 border-t">
+                    <button type="button" onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 mr-2">ยกเลิก</button>
+                    <button type="submit" disabled={isSaving} className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:bg-blue-300">
+                        {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
 
 const TimetableArrangement: React.FC = () => {
     const { 
@@ -356,6 +496,7 @@ const TimetableArrangement: React.FC = () => {
     const [arrangeBy, setArrangeBy] = useState<ArrangeByType>('classGroup');
     const [selectedId, setSelectedId] = useState<string>('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isBulkActivityModalOpen, setIsBulkActivityModalOpen] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [currentEntry, setCurrentEntry] = useState<Partial<ScheduleEntry> & { originalEntryIdToMove?: string } | null>(null);
     const [submissionError, setSubmissionError] = useState<ConflictState>(null);
@@ -376,6 +517,12 @@ const TimetableArrangement: React.FC = () => {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState<ScheduleEntry | null>(null);
     const [classGroupInputMode, setClassGroupInputMode] = useState<'select' | 'text'>('select');
+
+    const [resultModalInfo, setResultModalInfo] = useState<{
+        isOpen: boolean;
+        message: string;
+        conflicts: { day: string; timeSlot: string; classGroup: string; reason: string; }[];
+    }>({ isOpen: false, message: '', conflicts: [] });
 
     const memoizedFetchClassGroupSubjects = useCallback(fetchClassGroupSubjects, []);
 
@@ -761,6 +908,15 @@ const TimetableArrangement: React.FC = () => {
         setCurrentEntry(prev => prev ? { ...prev, customActivity: activity } : { customActivity: activity });
     };
 
+    const handleBulkOperationComplete = (result: ApiResponse) => {
+        setIsBulkActivityModalOpen(false); // Close the creation modal
+        setResultModalInfo({
+            isOpen: true,
+            message: result.message || 'ดำเนินการเรียบร้อย',
+            conflicts: result.items || []
+        });
+    };
+
     const chatbotContext = useMemo(() => {
         if (!selectedId) return null;
 
@@ -855,11 +1011,17 @@ const TimetableArrangement: React.FC = () => {
                         </p>
                     )}
                 </div>
-                <button onClick={() => setIsOptionsOpen(!isOptionsOpen)} className="flex items-center bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
-                    <Settings size={20} className="mr-2" />
-                    ตัวเลือกการแสดงผล
-                    {isOptionsOpen ? <ChevronUp size={20} className="ml-1" /> : <ChevronDown size={20} className="ml-1" />}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setIsBulkActivityModalOpen(true)} className="flex items-center bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors">
+                        <Plus size={20} className="mr-2" />
+                        เพิ่มกิจกรรมพิเศษ (หลายรายการ)
+                    </button>
+                    <button onClick={() => setIsOptionsOpen(!isOptionsOpen)} className="flex items-center bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
+                        <Settings size={20} className="mr-2" />
+                        ตัวเลือกการแสดงผล
+                        {isOptionsOpen ? <ChevronUp size={20} className="ml-1" /> : <ChevronDown size={20} className="ml-1" />}
+                    </button>
+                </div>
             </div>
             {isOptionsOpen && (
                 <div className="mb-6 p-4 bg-white rounded-lg shadow-md border animate-fade-in-down">
@@ -905,6 +1067,63 @@ const TimetableArrangement: React.FC = () => {
                     selectedItemCount={1}
                 />
             )}
+
+            <BulkSpecialActivityModal
+                isOpen={isBulkActivityModalOpen}
+                onClose={() => setIsBulkActivityModalOpen(false)}
+                onComplete={handleBulkOperationComplete}
+            />
+            
+            <Modal
+                isOpen={resultModalInfo.isOpen}
+                onClose={() => setResultModalInfo({ isOpen: false, message: '', conflicts: [] })}
+                title="ผลลัพธ์การเพิ่มกิจกรรมพิเศษ"
+            >
+                <div className="space-y-4">
+                    <div className="p-4 bg-green-100 text-green-800 rounded-lg">
+                        <p className="font-semibold">{resultModalInfo.message}</p>
+                    </div>
+
+                    {resultModalInfo.conflicts && resultModalInfo.conflicts.length > 0 && (
+                        <div>
+                            <h3 className="font-bold text-red-700 mb-2">
+                                {`รายการที่ไม่สามารถบันทึกได้ (${resultModalInfo.conflicts.length} รายการ):`}
+                            </h3>
+                            <div className="max-h-60 overflow-y-auto border rounded-lg">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-100 sticky top-0">
+                                        <tr>
+                                            <th className="p-2 text-left">วัน</th>
+                                            <th className="p-2 text-left">คาบ</th>
+                                            <th className="p-2 text-left">กลุ่มเรียน</th>
+                                            <th className="p-2 text-left">เหตุผล</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {resultModalInfo.conflicts.map((conflict, index) => (
+                                            <tr key={index} className="border-t">
+                                                <td className="p-2">{conflict.day}</td>
+                                                <td className="p-2">{conflict.timeSlot}</td>
+                                                <td className="p-2">{conflict.classGroup}</td>
+                                                <td className="p-2">{conflict.reason}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex justify-end pt-4">
+                        <button
+                            type="button"
+                            onClick={() => setResultModalInfo({ isOpen: false, message: '', conflicts: [] })}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+                        >
+                            ตกลง
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={currentEntry?.id ? "แก้ไขคาบเรียน" : "เพิ่มคาบเรียน"}>
                 <form onSubmit={handleSubmit} className="space-y-4">

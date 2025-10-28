@@ -386,7 +386,22 @@ export const TimetableProvider: React.FC<{ children: ReactNode, schoolId: string
     const addClassGroupsInBulk = createBulkHandler('/class_groups/bulk');
     const addSubjectsInBulk = createBulkHandler('/subjects/bulk');
     const addLocationsInBulk = createBulkHandler('/locations/bulk');
+    const addTimeSlotsInBulk = createBulkHandler('/time_slots/bulk');
     
+    const addBulkSpecialActivity = async (activityData: any): Promise<ApiResponse> => {
+        try {
+            const result = await apiFetch('/schedule/bulk-activity', {
+                method: 'POST',
+                body: JSON.stringify(activityData),
+            });
+            await fetchData(); // Refresh schedule
+            return { success: true, message: result.message, items: result.conflicts }; // Use items to pass back conflicts
+        } catch (error: unknown) {
+            const { message } = getApiError(error);
+            return { success: false, message };
+        }
+    };
+
     // Publishing Status
     const fetchPublishingStatus = async () => {
         try {
@@ -678,6 +693,8 @@ export const TimetableProvider: React.FC<{ children: ReactNode, schoolId: string
             addClassGroupsInBulk,
             addSubjectsInBulk,
             addLocationsInBulk,
+            addTimeSlotsInBulk,
+            addBulkSpecialActivity,
             updateItemStatus,
             fetchSubstitutions,
             addSubstitution,
